@@ -12,13 +12,13 @@
 #------------------------------------------------------------
 
 import numpy as np
-from scipy.io import FortranFile as FF
 import copy
 import lazy_property
 from collections import Iterable
-from .__utility import str2bool, alpha_A, beta_A , real_recip_lattice, warning
+from .__utility import str2bool, alpha_A, beta_A , real_recip_lattice,iterate3d,one2three, warning
 from  .symmetry import Group
 from termcolor import cprint 
+from collections import defaultdict
 
 
 
@@ -59,9 +59,17 @@ class System():
 
     """
 
-    def __init__(self,   **parameters ):
-        self.set_parameters(**parameters)
+    def __init__(self,real_lattice,iRvec,HH_R,**parameters):
 
+        self.real_lattice,self.recip_lattice=real_recip_lattice(real_lattice,None)
+        self.iRvec = iRvec
+        assert iRvec.shape[0]==HH_R.shape[2]
+        assert HH_R.shape[0]==HH_R.shape[1]
+        self.num_wann=HH_R.shape[0]
+        self.HH_R=np.copy(HH_R)
+        self.iRvec=np.copy(iRvec)
+        self.set_parameters(**parameters)
+        self.set_symmetry()
 
 
     def set_parameters(self,**parameters):
@@ -229,12 +237,6 @@ class System():
     @lazy_property.LazyProperty
     def cell_volume(self):
         return abs(np.linalg.det(self.real_lattice))
-
-
-
-#
-# the following  implements the use_ws_distance = True  (see Wannier90 documentation for details)
-#
 
 
 

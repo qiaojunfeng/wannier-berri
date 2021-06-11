@@ -13,7 +13,7 @@
 #------------------------------------------------------------#
 
 import numpy as np
-from scipy.io import FortranFile 
+from .__utility import FortranFileR, FortranFileW
 import copy
 import functools
 #import billiard as multiprocessing 
@@ -24,14 +24,14 @@ from time import time
 from itertools import islice
 import gc
 
-readstr  = lambda F : "".join(c.decode('ascii')  for c in F.read_record('c') ).strip() 
+readstr  = lambda F : "".join(c.decode('ascii')  for c in F.read_record('c') ).strip()
 
 class CheckPoint():
 
     def __init__(self,seedname):
         t0=time()
         seedname=seedname.strip()
-        FIN=FortranFile(seedname+'.chk','r')
+        FIN=FortranFileR(seedname+'.chk')
         readint   = lambda : FIN.read_record('i4')
         readfloat = lambda : FIN.read_record('f8')
         def readcomplex():
@@ -232,6 +232,9 @@ def convert(A):
     return np.array([l.split() for l in A],dtype=float)
 
 class MMN(W90_data):
+    """
+    MMN.data[ik, ib, m, n] = <u_{m,k}|u_{n,k+b}>
+    """
 
     @property
     def n_neighb(self):
@@ -255,7 +258,8 @@ class MMN(W90_data):
     def read(self,seedname,npar=multiprocessing.cpu_count()):
         t0=time()
         f_mmn_in=open(seedname+".mmn","r")
-        print ("reading {}.mmn: ".format(seedname)+f_mmn_in.readline())
+        _l=f_mmn_in.readline()
+        print ("reading {}.mmn: ".format(seedname)+_l)
         NB,NK,NNB=np.array(f_mmn_in.readline().split(),dtype=int)
         self.data=np.zeros( (NK,NNB,NB,NB), dtype=complex )
         block=1+self.NB*self.NB
@@ -266,7 +270,7 @@ class MMN(W90_data):
             pool=multiprocessing.Pool(npar)
         for j in range(0,NNB*NK,npar*mult):
             x=list(islice(f_mmn_in, int(block*npar*mult)))
-            print ("mmn: read {} lines".format(len(x)))
+#            print ("mmn: read {} lines".format(len(x)))
             if len(x)==0 : break
             headstring+=x[::block]
             y=[x[i*block+1:(i+1)*block] for i in range(npar*mult) if (i+1)*block<=len(x)]
@@ -385,12 +389,47 @@ class AMN(W90_data):
 
 
 
+    def set_bk(self,chk):
+      try :
+        self.bk
+        self.wk
+        return
+      except:
+        bk_latt=np.array(np.round( [(chk.kpt_latt[nbrs]-chk.kpt_latt+G)*chk.mp_grid[None,:] for nbrs,G in zip(self.neighbours.T,self.G.transpose(1,0,2))] ).transpose(1,0,2),dtype=int)
+        bk_latt_unique=np.array([b for b in set(tuple(bk) for bk in bk_latt.reshape(-1,3))],dtype=int)
+        assert len(bk_latt_unique)==self.NNB
+        bk_cart_unique=bk_latt_unique.dot(chk.recip_lattice/chk.mp_grid[:,None])
+        bk_cart_unique_length=np.linalg.norm(bk_cart_unique,axis=1)
+        srt=np.argsort(bk_cart_unique_length)
+        bk_latt_unique=bk_latt_unique[srt]
+        bk_cart_unique=bk_cart_unique[srt]
+        bk_cart_unique_length=bk_cart_unique_length[srt]
+        brd=[0,]+list(np.where(bk_cart_unique_length[1:]-bk_cart_unique_length[:-1]>1e-7)[0]+1)+[self.NNB,]
+        shell_mat=np.array([ bk_cart_unique[b1:b2].T.dot(bk_cart_unique[b1:b2])  for b1,b2 in zip (brd,brd[1:])])
+        shell_mat_line=shell_mat.reshape(-1,9)
+        u,s,v=np.linalg.svd(shell_mat_line,full_matrices=False)
+#        print ("u,s,v=",u,s,v)
+#        print("check svd : ",u.dot(np.diag(s)).dot(v)-shell_mat_line)
+        s=1./s
+        weight_shell=np.eye(3).reshape(1,-1).dot(v.T.dot(np.diag(s)).dot(u.T)).reshape(-1)
+        check_eye=sum(w*m for w,m in zip(weight_shell,shell_mat))
+        tol=np.linalg.norm(check_eye-np.eye(3))
+        if tol>1e-5 :
+            raise RuntimeError("Error while determining shell weights. the following matrix :\n {} \n failed to be identity by an error of {} Further debug informstion :  \n bk_latt_unique={} \n bk_cart_unique={} \n bk_cart_unique_length={}\nshell_mat={}\nweight_shell={}\n".format(
+                      check_eye,tol, bk_latt_unique,bk_cart_unique,bk_cart_unique_length,shell_mat,weight_shell))
+        weight=np.array([w for w,b1,b2 in zip(weight_shell,brd,brd[1:]) for i in range(b1,b2)])
+        weight_dict  = {tuple(bk):w for bk,w in zip(bk_latt_unique,weight) }
+        bk_cart_dict = {tuple(bk):bkcart for bk,bkcart in zip(bk_latt_unique,bk_cart_unique) }
+        self.bk_cart=np.array([[bk_cart_dict[tuple(bkl)] for bkl in bklk] for bklk in bk_latt])
+        self.wk     =np.array([[ weight_dict[tuple(bkl)] for bkl in bklk] for bklk in bk_latt])
+        
 def str2arraymmn(A):
     a=np.array([l.split()[3:] for l in A],dtype=float)
 #    if shape is None:
 #        n=int(round(np.sqrt(a.shape[0])))
 #        shape=(n,n)
     return (a[:,0]+1j*a[:,1])
+
 
 
 class EIG(W90_data):
@@ -412,15 +451,17 @@ class EIG(W90_data):
 
             
 class SPN(W90_data):
+    """
+    SPN.data[ik, m, n, ipol] = <u_{m,k}|S_ipol|u_{n,k}>
+    """
     def __init__(self,seedname='wannier90',formatted=False):
         print ("----------\n SPN  \n---------\n")
-        spn_formatted_in=formatted
-        if  spn_formatted_in:
+        if formatted:
             f_spn_in = open(seedname+".spn", 'r')
             SPNheader=f_spn_in.readline().strip()
             nbnd,NK=(int(x) for x in f_spn_in.readline().split())
         else:
-            f_spn_in = FortranFile(seedname+".spn", 'r')
+            f_spn_in = FortranFileR(seedname+".spn")
             SPNheader=(f_spn_in.read_record(dtype='c')) 
             nbnd,NK=f_spn_in.read_record(dtype=np.int32)
             SPNheader="".join(a.decode('ascii') for a in SPNheader)
@@ -432,8 +473,8 @@ class SPN(W90_data):
 
         for ik in range(NK):
             A=np.zeros((3,nbnd,nbnd),dtype=np.complex)
-            if spn_formatted_in:
-                tmp=np.array( [f_spn_in.readline().split() for i in xrange (3*nbnd*(nbnd+1)/2)  ],dtype=float)
+            if formatted:
+                tmp=np.array( [f_spn_in.readline().split() for i in range(3*nbnd*(nbnd+1)//2)  ],dtype=float)
                 tmp=tmp[:,0]+1.j*tmp[:,1]
             else:
                 tmp=f_spn_in.read_record(dtype=np.complex)
@@ -446,48 +487,59 @@ class SPN(W90_data):
         print ("----------\n SPN OK  \n---------\n")
 
 
-class UXU(W90_data):  # uHu or uIu
+class UXU(W90_data):
+    """
+    Read and setup uHu or uIu object.
+    pw2wannier90 writes data_pw2w90[n, m, ib1, ib2, ik] = <u_{m,k+b1}|X|u_{n,k+b2}>
+    in column-major order. (X = H for UHU, X = I for UIU.)
+    Here, we read to have data[ik, ib1, ib2, m, n] = <u_{m,k+b1}|X|u_{n,k+b2}>.
+    """
     @property
     def n_neighb(self):
         return 2
 
-    #def __init__(self,seedname='wannier90',formatted=False,suffix='uHu'):
     def __init__(self,seedname='wannier90',formatted=False,suffix='uHu'):
         print ("----------\n  {0}   \n---------".format(suffix))
         print('formatted == {}'.format(formatted))
         if formatted:
             f_uXu_in = open(seedname+"."+suffix, 'r')
-            header=f_uXu_in.readline().strip() 
+            header=f_uXu_in.readline().strip()
             NB,NK,NNB =(int(x) for x in f_uXu_in.readline().split())
         else:
-            f_uXu_in = FortranFile(seedname+"."+suffix, 'r')
+            f_uXu_in = FortranFileR(seedname+"."+suffix)
             header=readstr(f_uXu_in)
             NB,NK,NNB=f_uXu_in.read_record('i4')
 
         print ("reading {}.{} : <{}>".format(seedname,suffix,header))
 
-        
         self.data=np.zeros( (NK,NNB,NNB,NB,NB),dtype=complex )
         if formatted:
             tmp=np.array( [f_uXu_in.readline().split() for i in range(NK*NNB*NNB*NB*NB)  ],dtype=float)
-            tmp_conj=tmp[:,0]+1.j*tmp[:,1]
-            self.data=tmp_conj.reshape(NK,NNB,NNB,NB,NB)
+            tmp_cplx=tmp[:,0]+1.j*tmp[:,1]
+            self.data=tmp_cplx.reshape(NK,NNB,NNB,NB,NB).transpose(0,2,1,3,4)
         else:
             for ik in range(NK):
 #            print ("k-point {} of {}".format( ik+1,NK))
                 for ib2 in range(NNB):
                     for ib1 in range(NNB):
-                        tmp=f_uXu_in.read_record('f8').reshape((2,NB,NB),order='F').transpose(2,1,0) 
+                        tmp=f_uXu_in.read_record('f8').reshape((2,NB,NB),order='F').transpose(2,1,0)
+                        # tmp[m, n] = <u_{m,k+b1}|X|u_{n,k+b2}>
                         self.data[ik,ib1,ib2]=tmp[:,:,0]+1j*tmp[:,:,1]
         print ("----------\n {0} OK  \n---------\n".format(suffix))
         f_uXu_in.close()
 
 
-class UHU(UXU):  
+class UHU(UXU):
+    """
+    UHU.data[ik, ib1, ib2, m, n] = <u_{m,k+b1}|H(k)|u_{n,k+b2}>
+    """
     def __init__(self,seedname='wannier90',formatted=False):
         super(UHU, self).__init__(seedname=seedname,formatted=formatted,suffix='uHu' )
 
-class UIU(UXU):  
+class UIU(UXU):
+    """
+    UIU.data[ik, ib1, ib2, m, n] = <u_{m,k+b1}|u_{n,k+b2}>
+    """
     def __init__(self,seedname='wannier90',formatted=False):
         super(UIU, self).__init__(seedname=seedname,formatted=formatted,suffix='uIu' )
 
@@ -637,7 +689,14 @@ class DMN():
 
 
 
-class SXU(W90_data):  # sHu or sIu
+class SXU(W90_data):
+    """
+    Read and setup sHu or sIu object.
+    pw2wannier90 writes data_pw2w90[n, m, ipol, ib, ik] = <u_{m,k}|S_ipol * X|u_{n,k+b}>
+    in column-major order. (X = H for SHU, X = I for SIU.)
+    Here, we read to have data[ik, ib, m, n, ipol] = <u_{m,k}|S_ipol * X|u_{n,k+b}>.
+    """
+
     @property
     def n_neighb(self):
         return 1
@@ -647,10 +706,10 @@ class SXU(W90_data):  # sHu or sIu
 
         if formatted:
             f_sXu_in = open(seedname+"."+suffix, 'r')
-            header=f_sXu_in.readline().strip() 
+            header=f_sXu_in.readline().strip()
             NB,NK,NNB =(int(x) for x in f_sXu_in.readline().split())
         else:
-            f_sXu_in = FortranFile(seedname+"."+suffix, 'r')
+            f_sXu_in = FortranFileR(seedname+"."+suffix)
             header=readstr(f_sXu_in)
             NB,NK,NNB=   f_sXu_in.read_record('i4')
 
@@ -658,20 +717,34 @@ class SXU(W90_data):  # sHu or sIu
 
         self.data=np.zeros( (NK,NNB,NB,NB,3),dtype=complex )
 
-        for ik in range(NK):
-#            print ("k-point {} of {}".format( ik+1,NK))
-            for ib2 in range(NNB):
-                for ipol in range(3):
-                   tmp=f_sXu_in.read_record('f8').reshape((2,NB,NB),order='F').transpose(2,1,0)
-                   self.data[ik,ib2,:,:,ipol]=tmp[:,:,0]+1j*tmp[:,:,1]
+        if formatted:
+            tmp = np.array([f_sXu_in.readline().split() for i in range(NK*NNB*3*NB*NB)], dtype=float)
+            tmp_cplx = tmp[:,0] + 1j * tmp[:,1]
+            # tmp_cplx[ik, ib, ipol, m, n] = <u_{m,k}|S_ipol * X|u_{n,k+b}>
+            self.data = tmp_cplx.reshape(NK,NNB,3,NB,NB).transpose(0,1,3,4,2)
+        else:
+            for ik in range(NK):
+    #            print ("k-point {} of {}".format( ik+1,NK))
+                for ib in range(NNB):
+                    for ipol in range(3):
+                       tmp=f_sXu_in.read_record('f8').reshape((2,NB,NB),order='F').transpose(2,1,0)
+                       # tmp[m, n] = <u_{m,k}|S_ipol*X|u_{n,k+b}>
+                       self.data[ik,ib,:,:,ipol] = tmp[:,:,0] + 1j*tmp[:,:,1]
+
         print ("----------\n {0} OK  \n---------\n".format(suffix))
         f_sXu_in.close()
 
 
 class SIU(SXU):
+    """
+    SIU.data[ik, ib, m, n, ipol] = <u_{m,k}|S_ipol|u_{n,k+b}>
+    """
     def __init__(self,seedname='wannier90',formatted=False):
         super(SIU, self).__init__(seedname=seedname,formatted=formatted,suffix='sIu' )
 
 class SHU(SXU):
+    """
+    SHU.data[ik, ib, m, n, ipol] = <u_{m,k}|S_ipol*H(k)|u_{n,k+b}>
+    """
     def __init__(self,seedname='wannier90',formatted=False):
         super(SHU, self).__init__(seedname=seedname,formatted=formatted,suffix='sHu' )

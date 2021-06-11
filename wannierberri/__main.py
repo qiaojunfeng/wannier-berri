@@ -14,17 +14,16 @@
 
 
 import functools 
+from . import __version__
 from .__evaluate import evaluate_K
 from .__utility import getSmoother, warning
 from . import __integrate 
 from . import __tabulate  
 from . import symmetry
-
+from .__path import Path
 import numpy as np
-from scipy.io import FortranFile
-from .__version import __version__
 from .__result import NoComponentError
-from collections import Iterable
+from collections.abc import Iterable
 integrate_options=__integrate.calculators.keys()
 tabulate_options =__tabulate.calculators.keys()
 from .mmn2uHu import hlp as hlp_mmn
@@ -79,13 +78,13 @@ def welcome():
     logo="""
 .::    .   .::: .:::::::.  :::.    :::.:::.    :::. :::.,::::::  :::::::..       :::::::.  .,::::::  :::::::..   :::::::..   :::
 ';;,  ;;  ;;;' '  ;;`;;  ` `;;;;,  `;;;`;;;;,  `;;; ;;;;;;;''''  ;;;;``;;;;       ;;;'';;' ;;;;''''  ;;;;``;;;;  ;;;;``;;;;  ;;;
- '[[, [[, [['    ,[[ '[[,    [[[[[. '[[  [[[[[. '[[ [[[ [[cccc    [[[,/[[['       [[[__[[\. [[cccc    [[[,/[[['   [[[,/[[['  [[[
+ '[[, [[, [['    ,[[ '[[,    [[[[[. '[[  [[[[[. '[[ [[[ [[cccc    [[[,/[[['       [[[__[[\\. [[cccc    [[[,/[[['   [[[,/[[['  [[[
    Y$c$$$c$P    c$$$cc$$$c   $$$ "Y$c$$  $$$ "Y$c$$ $$$ $$\"\"\"\"    $$$$$$c         $$\"\"\"\"Y$$ $$\"\"\"\"    $$$$$$c     $$$$$$c    $$$
     "88"888      888   888,  888    Y88  888    Y88 888 888oo,__  888b "88bo,    _88o,,od8P 888oo,__  888b "88bo, 888b "88bo,888
      "M "M"      YMM   ""`   MMM     YM  MMM     YM MMM \"\"\"\"YUMMM MMMM   "W"     ""YUMMMP"  \"\"\"\"YUMMM MMMM   "W"  MMMM   "W" MMM
 """
     cprint(logo,'yellow')
-    cprint("a.k.a. Wannier19",'red')
+#    cprint("a.k.a. Wannier19",'red')
     figlet("    by Stepan Tsirkin et al",font='straight',col='green')
 
 
@@ -206,15 +205,36 @@ def tabulate(system,grid, quantities=[],
 
     """
 
+    mode = '3D'
+    if isinstance(grid,Path): mode = 'path'
     cprint ("\nTabulating the following qantities: "+", ".join(quantities)+"\n",'green', attrs=['bold'])
     check_option(quantities,tabulate_options,"tabulate")
     eval_func=functools.partial(  __tabulate.tabXnk, ibands=ibands,quantities=quantities,parameters=parameters )
     t0=time()
     res=evaluate_K(eval_func,system,grid,nparK=numproc,
-            adpt_num_iter=0 , restart=False,suffix=suffix,file_Klist=None)
+            adpt_num_iter=0 , restart=False,suffix=suffix,file_Klist=None,nosym=(mode=='path') )
+
     t1=time()
-    res=res.to_grid(grid.dense)
-    t2=time()
+    if mode=='3D':
+        res=res.to_grid(grid.dense)
+        t2=time()
+        ttxt,twrite=write_frmsf(frmsf_name,Ef0,numproc,quantities,res)
+
+    t4=time()
+
+    cprint ("Tabulating finished successfully",'green', attrs=['bold'])
+    print ( ("Time     : Total : {} s\n"+
+             "        evaluate : {} s\n").format(t4-t0,t1-t0) )
+
+    if mode=='3D': print( (
+             "         to_grid : {} s\n"+
+             "         txt     : {} s\n"+
+             "         write   : {} s\n").format(t2-t1,ttxt,twrite ) )
+    return res
+
+
+
+def write_frmsf(frmsf_name,Ef0,numproc,quantities,res):
     if frmsf_name is not None:
         open("{0}_E.frmsf".format(frmsf_name),"w").write(
              res.fermiSurfer(quantity=None,efermi=Ef0,npar=numproc) )
@@ -237,15 +257,5 @@ def tabulate(system,grid, quantities=[],
     else:
         ttxt=0
         twrite=0
-    t4=time()
-
-    cprint ("Tabulating finished successfully",'green', attrs=['bold'])
-    print ( ("Time     : Total : {} s\n"+
-             "        evaluate : {} s\n"+
-             "         to_grid : {} s\n"+
-             "         txt     : {} s\n"+
-             "         write   : {} s\n").format(t4-t0,t1-t0,t2-t1,ttxt,twrite ) )
-    return res
-
-
+    return ttxt,twrite
 

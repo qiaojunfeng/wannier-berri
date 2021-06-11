@@ -17,10 +17,36 @@ __debug = False
 
 import inspect
 import numpy as np
-import pyfftw
+
+from collections.abc import Iterable
 from lazy_property import LazyProperty as Lazy
 from time import time
 from termcolor import cprint 
+import functools,fortio,scipy.io
+
+try: 
+    import pyfftw
+    PYFFTW_IMPORTED=True
+except Exception as err:
+    PYFFTW_IMPORTED=False
+    print ("WARNING : error importing  `pyfftw` : {} \n will use numpy instead \n".format(err))
+
+
+# inheriting just in order to have posibility to change default values, without changing the rest of the code
+class FortranFileR(fortio.FortranFile):
+    def __init__(self,filename):
+        print ( "using fortio to read" )
+        try: 
+            super(FortranFileR, self).__init__( filename, mode='r',  header_dtype='uint32'  , auto_endian=True, check_file=True )
+        except ValueError :
+            print ("File '{}' contains subrecords - using header_dtype='int32'".format(filename))
+            super(FortranFileR, self).__init__( filename, mode='r',  header_dtype='int32'  , auto_endian=True, check_file=True )
+
+
+class FortranFileW(scipy.io.FortranFile):
+    def __init__(self,filename):
+        print ( "using scipy.io to write" )
+        super(FortranFileW, self).__init__( filename, mode='w')
 
 
 alpha_A=np.array([1,2,0])
@@ -68,7 +94,7 @@ class Smoother():
         self.T=T*Boltzmann/elementary_charge  # now in eV
         self.E=np.copy(E)
         dE=E[1]-E[0]
-        maxdE=5
+        maxdE=8
         self.NE1=int(maxdE*self.T/dE)
         self.NE=E.shape[0]
         self.smt=self._broaden(np.arange(-self.NE1,self.NE1+1)*dE)*dE
@@ -189,7 +215,9 @@ def fft_np(inp,axes,inverse=False):
     else:
         return np.fft.fftn(inp,axes=axes)
 
-def FFT(inp,axes,inverse=False,destroy=True,numthreads=1,fft='fftw'):
+def FFT(inp,axes,inverse=False,destroy=True,numthreads=1,fft='fftw' ):
+    if fft=='fftw' and not PYFFTW_IMPORTED:
+        fft='numpy'
     if fft=='fftw':
         return fft_W(inp,axes,inverse=inverse,destroy=destroy,numthreads=numthreads)
     elif fft=='numpy':
@@ -222,6 +250,8 @@ class FFT_R_to_k():
         self.NKFFT=tuple(NKFFT)
         self.num_wann=num_wann
         assert lib in ('fftw','numpy','slow') , "fft lib '{}' is not known/supported".format(lib)
+        if lib=='fftw' and not PYFFTW_IMPORTED:
+            lib='numpy'
         self.lib = lib
         if lib == 'fftw':
             shape=self.NKFFT+(self.num_wann,self.num_wann)
@@ -318,6 +348,16 @@ def read_numbers(fl,num_read,dtype=int):
         read+=fl.readline().split()
     if len(read)>n : print ( "more numbers ({}) read then expected ({})".format(len(read),n))
     return np.array(read,dtype=dtype).reshape(num_read)
+
+def one2three(nk):
+    if nk is None:
+        return None
+    if isinstance(nk, Iterable):
+        if len(nk)!=3 :
+            raise RuntimeError("nk should be specified either as one  number or 3 numbers. found {}".format(nk))
+        return np.array(nk)
+    return np.array((nk,)*3)
+
 
 def find_degen(arr,degen_thresh):
     """ finds shells of 'almost same' values in array arr, and returns a list o[(b1,b2),...]"""
