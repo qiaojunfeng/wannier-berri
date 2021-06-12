@@ -70,7 +70,7 @@ class System_Wannierise(System_w90):
             #ws_map=ws_dist_map_gen(np.copy(self.iRvec),np.copy(chk.wannier_centres), np.copy(chk.mp_grid),np.copy(self.real_lattice),npar=npar)
             ws_map=ws_dist_map_gen(self.iRvec,aidata.wannier_centres, self.mp_grid,self.real_lattice, npar=npar)
         
-        eig=EIG(seedname)
+        eig=EIG(self.seedname)
         if self.getAA or self.getBB:
             mmn=MMN(seedname,npar=npar)
 
@@ -143,20 +143,20 @@ class System_Wannierise(System_w90):
     def NKFFT_recommended(self):
         return self.mp_grid
 
-    def wigner_seitz(self,mp_grid):
+    def wigner_seitz(self):
         ws_search_size=np.array([1]*3)
         dist_dim=np.prod((ws_search_size+1)*2+1)
         origin=divmod((dist_dim+1),2)[0]-1
         real_metric=self.real_lattice.dot(self.real_lattice.T)
-        mp_grid=np.array(mp_grid)
+#        mp_grid=np.array(self.mp_grid)
         irvec=[]
         ndegen=[]
-        for n in iterate3dpm(mp_grid*ws_search_size):
+        for n in iterate3dpm(self.mp_grid*ws_search_size):
             # Loop over the 125 points R. R=0 corresponds to i1=i2=i3=0,
             # or icnt=63  (62 starting from zero)
             dist=[]
             for i in iterate3dpm((1,1,1)+ws_search_size):
-                ndiff=n-i*mp_grid
+                ndiff=n-i*self.mp_grid
                 dist.append(ndiff.dot(real_metric.dot(ndiff)))
             dist_min = np.min(dist)
             if  abs(dist[origin] - dist_min) < 1.e-7 :

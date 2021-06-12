@@ -1,8 +1,9 @@
 from .__w90_files import MMN,EIG,AMN,WIN,DMN
 from copy import deepcopy
 import numpy as np
-from .__system import System
+from .__system_wannierise import System_Wannierise
 from .__utility import fourier_q_to_R
+from copy import copy
 DEGEN_THRESH=1e-2  # for safity - avoid splitting (almost) degenerate states between free/frozen  inner/outer subspaces  (probably too much)
 
 class AbInitioData():
@@ -13,7 +14,8 @@ class AbInitioData():
 # todo : symmetry
 
     def __init__(self,seedname="wannier90",sitesym=False):
-        win=WIN(seedname)
+        self.seedname=copy(seedname)
+        win=WIN(self.seedname)
 #        win.print_clean()
         self.mp_grid=win.get_param("mp_grid",dtype=int,size=3)
 #        print ("mp_grid=",self.mp_grid)
@@ -23,11 +25,11 @@ class AbInitioData():
 #        print ("real_lattice=",self.real_lattice)
 #        exit()
 #        real_lattice,mp_grid,kpt_latt=read_from_win(seedname,['real_lattice','mp_grid','kpoints'])
-        eig=EIG(seedname)
+        eig=EIG(self.seedname)
 #        eig.write(seedname+"-copy")
-        mmn=MMN(seedname)
+        mmn=MMN(self.seedname)
 #        mmn.write(seedname+"-copy")
-        amn=AMN(seedname)
+        amn=AMN(self.seedname)
 #        amn.write(seedname+"-copy")
         assert eig.NK==amn.NK==mmn.NK
         assert eig.NB>=amn.NB
@@ -49,7 +51,7 @@ class AbInitioData():
         self.win_index=[np.arange(eig.NB)]*self.NK
         self.disentangled=False
         if sitesym:
-            self.Dmn=DMN(seedname,num_wann=self.NW)
+            self.Dmn=DMN(self.seedname,num_wann=self.NW)
         else:
             self.Dmn=DMN(None,num_wann=self.NW,num_bands=self.NB,nkpt=self.NK)
 
@@ -85,7 +87,8 @@ class AbInitioData():
                  froz_max=-np.Inf,
                  num_iter=100,
                  conv_tol=1e-9,
-                 mix_ratio=0.5
+                 mix_ratio=0.5,
+                 num_iter_converge=10,
                  ):
 
         assert 0<mix_ratio<=1
@@ -139,14 +142,24 @@ class AbInitioData():
 #                '|  Iter     Omega_I(i-1)      Omega_I(i)      Delta (frac.)    Time   |<-- DIS\n'+
 #                '+---------------------------------------------------------------------+<-- DIS'  )
 
+        Omega_I_list=[]
         for i_iter in range(num_iter):
             Z=[(z+zfr)  for z,zfr in zip(calc_Z(Mmn_FF('free','free'),U_opt_free),Z_frozen) ]  # only for irreducible
             if i_iter>0 and mix_ratio<1:
                 Z=[ (mix_ratio*z + (1-mix_ratio)*zo) for z,zo in zip(Z,Z_old) ]  #  only for irreducible
             U_opt_free_irr=self.get_max_eig(Z,self.nWfree[irr],self.nBfree[irr]) #  only for irreducible
             U_opt_free=self.symmetrize_U_opt(U_opt_free_irr,free=True)
-            Omega_I=Mmn_FF.Omega_I(U_opt_free)
-            print ("iteration {:4d}".format(i_iter)+" Omega_I= "+"  ".join("{:15.10f}".format(x) for x in Omega_I)+" tot =","{:15.10f}".format(sum(Omega_I)))
+            Omega_I=sum(Mmn_FF.Omega_I(U_opt_free))
+            Omega_I_list.append(Omega_I)
+            try:
+                _delta=Omega_I-Omega_I_list[-2] 
+            except IndexError:
+                _delta= "--"
+#            print ("iteration {:4d}".format(i_iter)+" Omega_I= "+"  ".join("{:15.10f}".format(x) for x in Omega_I)+" tot =","{:15.10f}".format(sum(Omega_I)))
+            print ("iteration {:4d}".format(i_iter)+" Omega_I = {:15.10f}".format(Omega_I)+f"  delta={_delta}")
+            if i_iter+1>=num_iter_converge:
+                if np.std(Omega_I_list[-num_iter_converge:])<conv_tol:
+                    break
             Z_old=deepcopy(Z)
 
         U_opt_full_irr=[]
@@ -227,13 +240,17 @@ class AbInitioData():
         EV=[np.linalg.eigh(M) for M in matrix]
         return [ ev[1][:,np.argsort(ev[0])[nf-nv:nf]] for ev,nv,nf  in zip(EV,nvec,nBfree) ] 
 
-    def wannier_centers(self):
+    @property
+    def wannier_centres(self):
         WC=np.zeros( (self.NW,3) )
         for ik in range(self.NK):
             for ib,iknb in enumerate(self.neighbours[ik]) :
                 AAW=self.Mmn[ik][ib].diagonal()
                 WC -= np.log(AAW).imag[:,None]*self.wb[ik,ib]*self.bk_cart[ik,ib,None,:]
         return WC/self.NK
+    
+    def getSystem(self,**parameters):
+        return System_Wannierise(self,**parameters)
 
 
     class Mmn_Free_Frozen():

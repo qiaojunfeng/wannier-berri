@@ -8,6 +8,7 @@ aidata.disentangle( froz_min=np.Inf,
                  conv_tol=1e-9,
                  mix_ratio=0.5
                  )
-print (aidata.wannier_centers())
+print (aidata.wannier_centres)
+system=aidata.getSystem()
 #aidata.write_files(seedname="wannier90-disentangled")
-#wb.System_Wanneirise(aidata)
+#system=wb.System_Wanneirise(aidata)
