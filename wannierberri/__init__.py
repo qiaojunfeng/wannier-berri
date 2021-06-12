@@ -14,9 +14,8 @@
 wannierberri - a module for Wannier interpolation
 """
 
-import sys,colorama
-colorama.init(strip=not sys.stdout.isatty()) # strip colors if stdout is redirected
-__version__ = "0.9.2"
+__version__ = "0.9.3"
+
 from .__main import integrate,tabulate,symmetry,integrate_options,tabulate_options,welcome,print_options
 from .__tabulate import TABresult
 from .__grid import Grid

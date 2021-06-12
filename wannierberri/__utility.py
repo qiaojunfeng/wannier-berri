@@ -88,38 +88,60 @@ def real_recip_lattice(real_lattice=None,recip_lattice=None):
 
 
 from scipy.constants import Boltzmann,elementary_charge,hbar
+import abc
 
-class Smoother():
-    def __init__(self,E,T=10):  # T in K
-        self.T=T*Boltzmann/elementary_charge  # now in eV
-        self.E=np.copy(E)
-        dE=E[1]-E[0]
-        maxdE=8
-        self.NE1=int(maxdE*self.T/dE)
-        self.NE=E.shape[0]
-        self.smt=self._broaden(np.arange(-self.NE1,self.NE1+1)*dE)*dE
+class AbstractSmoother(abc.ABC):
+    """ Smoother for smoothing an array by convolution.
+    This is an abstract class which cannot by instantiated. Only the specific child classes
+    can be instantiated. Each child class should implement its own version of _params,
+    __init__, and _broaden.
+    - _params : list of parameters that uniquely define the smoother.
+    - _broaden : function that defines the broadening method.
+    - __init__ : initialize Smoother parameters
 
+    Parameters
+    -----------
+    E : 1D array
+        The energies on which the data are calculated at.
+    smear : float
+        Smearing parameter in eV.
+    maxdE : int
+        Determines the width of the convoluting function as (-smear * maxdE, smear * maxdE).
+    """
+    @property
+    @abc.abstractmethod
+    def _params(self):
+        pass
 
-    @Lazy
+    @abc.abstractmethod
+    def __init__(self, E, smear, maxdE):
+        self.smear = smear
+        self.E = np.copy(E)
+        self.maxdE = maxdE
+        self.dE = E[1] - E[0]
+        self.Emin = E[0]
+        self.Emax = E[-1]
+        self.NE1 = int(self.maxdE * self.smear / self.dE)
+        self.NE = E.shape[0]
+        self.smt = self._broaden(np.arange(-self.NE1,self.NE1+1)*self.dE)*self.dE
+
+    @abc.abstractmethod
+    def _broaden(self, E):
+        pass
+
     def __str__(self):
-        return ("<Smoother T={}, NE={}, NE1={} , E={}..{} step {}>".format(self.T,self.NE,self.NE1,self.Emin,self.Emax,self.dE) )
-        
-    @Lazy 
-    def dE(self):
-        return self.E[1]-self.E[0]
+        return f"<{type(self).__name__}>"
 
-    @Lazy 
-    def Emin(self):
-        return self.E[0]
+    def __eq__(self,other):
+        if type(self) != type(other):
+            return False
+        else:
+            for param in self._params:
+                if not np.allclose(getattr(self, param), getattr(other, param)):
+                    return False
+        return True
 
-    @Lazy 
-    def Emax(self):
-        return self.E[-1]
-
-    def _broaden(self,E):
-        return 0.25/self.T/np.cosh(E/(2*self.T))**2
-
-    def __call__(self,A,axis=0):
+    def __call__(self, A, axis=0):
         assert self.E.shape[0]==A.shape[axis]
         A=A.transpose((axis,)+tuple(range(0,axis))+tuple(range(axis+1,A.ndim)))
         res=np.zeros(A.shape, dtype=A.dtype)
@@ -132,44 +154,83 @@ class Smoother():
         return res.transpose( tuple(range(1,axis+1))+ (0,)+tuple(range(axis+1,A.ndim)) )
 
 
-    def __eq__(self,other):
-        if isinstance(other,VoidSmoother):
-            return False
-        elif not isinstance(other,Smoother):
-            return False
-        else:
-            for var in ['T','dE','NE','NE1','Emin','Emax']:
-                if getattr(self,var)!=getattr(other,var):
-                    return False
-        return True
-#            return self.T==other.T and self.dE=other.E and self.NE==other.NE and self.
+class FermiDiracSmoother(AbstractSmoother):
+    """ Smoother that uses the derivative of Fermi-Dirac function.
 
+    Parameters
+    -----------
+    E : 1D array
+        The energies on which the data are calculated at.
+    T_Kelvin : float
+        Temperature in Kelvin. Transformed into self.smear, which is in eV.
+    maxdE : int
+        Determines the width of the convoluting function as (-T * maxdE, T * maxdE)
+    """
+    _params = ['smear', 'E', 'maxdE', 'NE1']
 
-class VoidSmoother(Smoother):
-    def __init__(self):
-        pass
-    
-    def __eq__(self,other):
-        if isinstance(other,VoidSmoother):
-            return True
-        else:
-            return False
-    
-    def __call__(self,A,axis=0):
-        return A
+    def __init__(self, E, T_Kelvin, maxdE=8):
+        self.T_Kelvin = T_Kelvin
+        smear = T_Kelvin * Boltzmann / elementary_charge  # convert K to eV
+        super().__init__(E, smear, maxdE)
+
+    def _broaden(self,E):
+        return 0.25 / self.smear / np.cosh(E/(2*self.smear))**2
 
     def __str__(self):
-        return ("<VoidSmoother>" )
+        return f"<FermiDiracSmoother T={self.smear} ({self.T_Kelvin:.1f} K), NE={self.NE}, NE1={self.NE1}, E={self.Emin}..{self.Emax}, step {self.dE}>"
 
 
-def getSmoother(energy,smear):
-    if energy is None: 
+class GaussianSmoother(AbstractSmoother):
+    """ Smoother that uses Gaussian function.
+
+    Parameters
+    -----------
+    E : 1D array
+        The energies on which the data are calculated at.
+    smear : float
+        Smearing parameter in eV.
+    maxdE : int
+        Determines the width of the convoluting function as (-smear * maxdE, smear * maxdE)
+    """
+    _params = ['smear', 'E', 'maxdE', 'NE1']
+
+    def __init__(self, E, smear, maxdE=8):
+        super().__init__(E, smear, maxdE)
+
+    def _broaden(self,E):
+        return np.exp(-(E / self.smear)**2) / self.smear / np.sqrt(np.pi)
+
+    def __str__(self):
+        return f"<GaussianSmoother smear={self.smear}, NE={self.NE}, NE1={self.NE1}, E={self.Emin}..{self.Emax}, step {self.dE}>"
+
+
+class VoidSmoother(AbstractSmoother):
+    """ Void smoother. When called, do nothing and return the original array."""
+    _params = []
+
+    def __init__(self):
+        pass
+
+    def _broaden(self, E):
+        pass
+
+    def __call__(self, A, axis=0):
+        return A
+
+
+def getSmoother(energy, smear, mode=None):
+    if energy is None:
         return VoidSmoother()
-    if smear is None or smear<=0: 
+    if smear is None or smear<=0:
         return VoidSmoother()
-    if len(energy)<=1: 
+    if len(energy) <= 1:
         return VoidSmoother()
-    return  Smoother(energy,smear) # smoother for functions of frequency
+    if mode == "Fermi-Dirac":
+        return FermiDiracSmoother(energy, smear)
+    elif mode == "Gaussian":
+        return GaussianSmoother(energy, smear)
+    else:
+        raise ValueError("Smoother mode not recognized.")
 
 
 def str2bool(v):
@@ -244,11 +305,12 @@ def fourier_q_to_R(AA_q,mp_grid,kpt_mp_grid,iRvec,ndegen,numthreads=1,fft='fftw'
 
 class FFT_R_to_k():
     
-    def __init__(self,iRvec,NKFFT,num_wann,numthreads=1,lib='fftw'):
+    def __init__(self,iRvec,NKFFT,num_wann,wannier_centres_reduced,real_lattice,numthreads=1,lib='fftw',use_wcc_phase=False,name=None):
         t0=time()
         print_my_name_start()
         self.NKFFT=tuple(NKFFT)
         self.num_wann=num_wann
+        self.real_lattice = real_lattice
         assert lib in ('fftw','numpy','slow') , "fft lib '{}' is not known/supported".format(lib)
         if lib=='fftw' and not PYFFTW_IMPORTED:
             lib='numpy'
@@ -267,6 +329,9 @@ class FFT_R_to_k():
         self.time_init=time()-t0
         self.time_call=0
         self.n_call=0
+        self.wannier_centres_reduced=wannier_centres_reduced
+        self.wannier_centres_cart = self.wannier_centres_reduced.dot(self.real_lattice) 
+        self.use_wcc_phase=use_wcc_phase
 
     def execute_fft(self,A):
         return self.fft_plan(A)
@@ -286,6 +351,25 @@ class FFT_R_to_k():
             raise RuntimeError("FFT.transform should not be called for slow FT")
         else :
             raise ValueError("Unknown type of Fourier transform :''".format(self.lib)) 
+    
+    @Lazy
+    def exponent(self):
+        '''
+        exponent for Fourier transform exp(1j*k*R)
+        '''
+        return [np.exp(2j*np.pi/self.NKFFT[i])**np.arange(self.NKFFT[i]) for i in range(3)]
+
+    @Lazy
+    def exponent_wcc(self): 
+        '''
+        additional exponent for Fourier transform under use_wcc_phase=True, exp(1j*k(tau_j - tau_i))
+        '''
+        w_centres_diff = np.array([[j-i for j in self.wannier_centres_reduced] for i in self.wannier_centres_reduced])
+        def exp_par(ii,jj,i):#k1 k2 k3 partial of exponent_wcc
+            return np.exp(2j*np.pi*w_centres_diff[ii,jj,i]/self.NKFFT[i])**np.arange(self.NKFFT[i])
+        exponent_wcc=np.array([[exp_par(ii,jj,0)[:,None,None]*exp_par(ii,jj,1)[None,:,None]*exp_par(ii,jj,2)[None,None,:]
+                        for jj in range(self.num_wann)] for ii in range(self.num_wann)])
+        return exponent_wcc.transpose((2,3,4,0,1))
 
     def __call__(self,AAA_R,hermitian=False,antihermitian=False,reshapeKline=True):
         t0=time()
@@ -295,25 +379,28 @@ class FFT_R_to_k():
         AAA_R=AAA_R.transpose((2,0,1)+tuple(range(3,AAA_R.ndim)))
         shapeA=AAA_R.shape
         if self.lib=='slow':
-#            print ("doing slow FT")
             t0=time()
-            exponent=[np.exp(2j*np.pi/self.NKFFT[i])**np.arange(self.NKFFT[i]) for i in range(3)]
             k=np.zeros(3,dtype=int)
             AAA_K=np.array([[[
-                     sum( np.prod([exponent[i][(k[i]*R[i])%self.NKFFT[i]] for i in range(3)])  *  A    for R,A in zip( self.iRvec, AAA_R) )
-                        for k[2] in range(self.NKFFT[2]) ] for k[1] in range(self.NKFFT[1]) ] for k[0] in range(self.NKFFT[0])  ] )
+                 sum( np.prod([self.exponent[i][(k[i]*R[i])%self.NKFFT[i]] for i in range(3)])  *  A    for R,A in zip( self.iRvec, AAA_R) )
+                    for k[2] in range(self.NKFFT[2]) ] for k[1] in range(self.NKFFT[1]) ] for k[0] in range(self.NKFFT[0])  ] )
             t=time()-t0
-#            print ("slow FT finished in {} sec for AAA_R {} and {} k-grid . {} per element".format(t,AAA_R.shape,self.NKFFT,t/np.prod(self.NKFFT )/np.prod(AAA_R.shape)))
         else:
+            t0=time()
             assert  self.nRvec==shapeA[0]
             assert  self.num_wann==shapeA[1]==shapeA[2]
             AAA_K=np.zeros( self.NKFFT+shapeA[1:], dtype=complex )
             ### TODO : place AAA_R to FFT grid from beginning, even before multiplying by exp(dkR)
             for ir,irvec in enumerate(self.iRvec):
-#                print (ir,irvec,self.NKFFT)
                 AAA_K[tuple(irvec)]+=AAA_R[ir]
             self.transform(AAA_K)
             AAA_K*=np.prod(self.NKFFT)
+            t=time()-t0
+        if self.use_wcc_phase:
+            exponent_wcc = self.exponent_wcc
+            exponent_wcc = exponent_wcc.reshape( (exponent_wcc.shape)+(1,)*(AAA_K.ndim-5) )# make exponent_wcc as same dimention with AAA_K
+            AAA_K=AAA_K * exponent_wcc
+
 
         ## TODO - think if fft transform of half of matrix makes sense
         if hermitian:
@@ -325,6 +412,7 @@ class FFT_R_to_k():
             AAA_K=AAA_K.reshape( (np.prod(self.NKFFT),)+shapeA[1:])
         self.time_call+=time()-t0
         self.n_call+=1
+#        print(np.shape(AAA_K)) 
         return AAA_K
 
 #    def __del__(self):

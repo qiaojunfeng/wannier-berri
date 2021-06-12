@@ -109,7 +109,7 @@ def check_option(quantities,avail,tp):
 
 def integrate(system,grid,Efermi=None,omega=None, Ef0=0,
                         smearEf=10,smearW=10,quantities=[],adpt_num_iter=0,adpt_fac=1,
-                        fout_name="wberri",restart=False,numproc=0,fftlib='fftw',suffix="",file_Klist="Klist",parameters={}):
+                        fout_name="wberri",restart=False,numproc=0,fftlib='fftw',suffix="",file_Klist="Klist",chunksize=0,parameters={}):
     """
     Integrate 
 
@@ -133,6 +133,8 @@ def integrate(system,grid,Efermi=None,omega=None, Ef0=0,
         number of K-points to be refined per quantity and criteria.
     num_proc : int 
         number of parallel processes. If <=0  - serial execution without `multiprocessing` module.
+    chunksize : int
+        chunksize for distributing K points among processes. If not set or if <=0, set to max(1, min(int(numK / num_proc / 200), 10)). Relevant only if num_proc > 0.
    
     Returns
     --------
@@ -164,22 +166,24 @@ def integrate(system,grid,Efermi=None,omega=None, Ef0=0,
     if smearW is not None:
         warning ( "smearW parameteris neglected, smearing is currently done inside the kubo routine, use  kBT parameter")
         smearW=None
-    smoothEf = getSmoother(Efermi,smearEf) # smoother for functions of Fermi energy
-    smoothW  = getSmoother(omega,smearW) # smoother for functions of frequency
+    smoothEf = getSmoother(Efermi, smearEf, "Fermi-Dirac") # smoother for functions of Fermi energy
+    smoothW  = getSmoother(omega,  smearW) # smoother for functions of frequency
+    # smoothW  = getSmoother(omega,  smearW,  "Gaussian") # smoother for functions of frequency
 
     eval_func=functools.partial( __integrate.intProperty, Efermi=Efermi, omega=omega, smootherEf=smoothEf, smootherOmega=smoothW,
             quantities=quantities, parameters=parameters )
     res=evaluate_K(eval_func,system,grid,nparK=numproc,fftlib=fftlib,
             adpt_num_iter=adpt_num_iter,adpt_nk=adpt_fac,
                 fout_name=fout_name,suffix=suffix,
-                restart=restart,file_Klist=file_Klist)
+                restart=restart,file_Klist=file_Klist, chunksize=chunksize)
     cprint ("Integrating finished successfully",'green', attrs=['bold'])
     return res
 
 
 
 def tabulate(system,grid, quantities=[],
-                  frmsf_name=None,ibands=None,suffix="",numproc=0,Ef0=0.,parameters={}):
+                  frmsf_name=None,ibands=None,suffix="",numproc=0,Ef0=0.,
+                  chunksize=0, parameters={}):
     """
     Tabulate quantities to be plotted
 
@@ -197,6 +201,8 @@ def tabulate(system,grid, quantities=[],
         if not None, the results are also printed to text files, ready to plot by for `FermiSurfer <https://fermisurfer.osdn.jp/>`_
     num_proc : int 
         number of parallel processes. If <=0  - serial execution without `multiprocessing` module.
+    chunksize : int
+        chunksize for distributing K points among processes. If not set or if <=0, set to max(1, min(int(numK / num_proc / 200), 10)). Relevant only if num_proc > 0.
    
     Returns
     --------
@@ -212,7 +218,7 @@ def tabulate(system,grid, quantities=[],
     eval_func=functools.partial(  __tabulate.tabXnk, ibands=ibands,quantities=quantities,parameters=parameters )
     t0=time()
     res=evaluate_K(eval_func,system,grid,nparK=numproc,
-            adpt_num_iter=0 , restart=False,suffix=suffix,file_Klist=None,nosym=(mode=='path') )
+            adpt_num_iter=0 , restart=False,suffix=suffix,file_Klist=None,nosym=(mode=='path'), chunksize=chunksize )
 
     t1=time()
     if mode=='3D':
