@@ -1,10 +1,20 @@
-from .__w90_files import MMN,EIG,AMN,WIN,DMN
+from .__w90_files import MMN,EIG,AMN,WIN,DMN,CheckPoint
 from copy import deepcopy
 import numpy as np
 from .__system_wannierise import System_Wannierise
 from .__utility import fourier_q_to_R
 from copy import copy
 DEGEN_THRESH=1e-2  # for safity - avoid splitting (almost) degenerate states between free/frozen  inner/outer subspaces  (probably too much)
+
+
+class CheckPoint_bare(CheckPoint):
+
+    def __init__(self):
+        pass
+
+
+
+
 
 class AbInitioData():
     """A class to describe all input files of wannier90, and to construct the Wannier functions 
@@ -15,40 +25,26 @@ class AbInitioData():
 
     def __init__(self,seedname="wannier90",sitesym=False):
         self.seedname=copy(seedname)
+        self.chk=CheckPoint_bare()
         win=WIN(self.seedname)
-#        win.print_clean()
-        self.mp_grid=win.get_param("mp_grid",dtype=int,size=3)
-#        print ("mp_grid=",self.mp_grid)
-        self.kpt_latt=win.get_param_block("kpoints",dtype=float,shape=(np.prod(self.mp_grid),3))
-#        print ("kpoints=",self.kpt_latt)
-        self.real_lattice=win.get_param_block("unit_cell_cart",dtype=float,shape=(3,3))
-#        print ("real_lattice=",self.real_lattice)
-#        exit()
-#        real_lattice,mp_grid,kpt_latt=read_from_win(seedname,['real_lattice','mp_grid','kpoints'])
-        eig=EIG(self.seedname)
-#        eig.write(seedname+"-copy")
-        mmn=MMN(self.seedname)
-#        mmn.write(seedname+"-copy")
-        amn=AMN(self.seedname)
-#        amn.write(seedname+"-copy")
-        assert eig.NK==amn.NK==mmn.NK
-        assert eig.NB>=amn.NB
-        assert eig.NB>=mmn.NB
-        self.NK=eig.NK
-        self.NW=amn.NW
-        self.NB=mmn.NB
-        self.recip_lattice=2*np.pi*np.linalg.inv(self.real_lattice).T
-        mmn.set_bk(mp_grid=self.mp_grid,kpt_latt=self.kpt_latt,recip_lattice=self.recip_lattice)
-        self.bk_cart=mmn.bk_cart
-#        print (self.bk_cart[0])
-#        exit()
-        self.wb=mmn.wk
-        self.G=mmn.G
-        self.neighbours=mmn.neighbours
-        self.Mmn=[m for m in mmn.data]
-        self.Amn=[a for a in amn.data]
-        self.Eig=eig.data
-        self.win_index=[np.arange(eig.NB)]*self.NK
+        self.chk.mp_grid=win.get_param("mp_grid",dtype=int,size=3)
+        self.chk.kpt_latt=win.get_param_block("kpoints",dtype=float,shape=(np.prod(self.chk.mp_grid),3))
+        self.chk.real_lattice=win.get_param_block("unit_cell_cart",dtype=float,shape=(3,3))
+        self.eig=EIG(self.seedname)
+        self.mmn=MMN(self.seedname)
+        self.amn=AMN(self.seedname)
+        assert self.eig.NK==self.amn.NK==self.mmn.NK
+        assert self.eig.NB>=self.amn.NB
+        assert self.eig.NB>=self.mmn.NB
+        self.NK=self.eig.NK
+        self.NW=self.amn.NW
+        self.NB=self.mmn.NB
+        self.chk.recip_lattice=2*np.pi*np.linalg.inv(self.chk.real_lattice).T
+        self.mmn.set_bk(mp_grid=self.chk.mp_grid,kpt_latt=self.chk.kpt_latt,recip_lattice=self.chk.recip_lattice)
+        self.Mmn=self.mmn.data # [m for m in self.mmn.data]
+        self.Amn=self.amn.data # [a for a in self.amn.data]
+        self.Eig=self.eig.data # [e for e in self.eig.data]
+        self.win_index=[np.arange(self.eig.NB)]*self.NK
         self.disentangled=False
         if sitesym:
             self.Dmn=DMN(self.seedname,num_wann=self.NW)
@@ -57,11 +53,11 @@ class AbInitioData():
 
 
 
-
     # TODO : allow k-dependent window (can it be useful?)
     def apply_outer_window(self,
                      win_min=-np.Inf,
                      win_max= np.Inf ):
+        raise NotImplementedError("outer window does not work so far")
         "Excludes the bands from outside the outer window"
 
         def win_index_nondegen(ik,thresh=DEGEN_THRESH):
@@ -75,11 +71,12 @@ class AbInitioData():
             return ind
 
         win_index_irr=[win_index_nondegen(ik) for ik in self.Dmn.kptirr]
-        self.Dmn.apply_outer_window(win_index_irr)
+#        self.excluded_bands=[list(set(ind)
+        self.Dmn.select_bands(win_index_irr)
         win_index=[win_index_irr[ik] for ik in self.Dmn.kpt2kptirr]
-        self.Eig=[E[ind] for E, ind in zip(self.Eig,win_index)]
-        self.Mmn=[[self.Mmn[ik][ib][win_index[ik],:][:,win_index[ikb]] for ib,ikb in enumerate(self.neighbours[ik])] for ik in range(self.NK)]
-        self.Amn=[self.Amn[ik][win_index[ik],:] for ik in range(self.NK)]
+        self._Eig=[E[ind] for E, ind in zip(self._Eig,win_index)]
+        self._Mmn=[[self._Mmn[ik][ib][win_index[ik],:][:,win_index[ikb]] for ib,ikb in enumerate(self.mmn.neighbours[ik])] for ik in range(self.NK)]
+        self._Amn=[self._Amn[ik][win_index[ik],:] for ik in range(self.NK)]
 
     # TODO : allow k-dependent window (can it be useful?)
     def disentangle(self,
@@ -95,7 +92,7 @@ class AbInitioData():
         def frozen_nondegen(ik,thresh=DEGEN_THRESH):
             """define the indices of the frozen bands, making sure that degenerate bands were not split 
             (unfreeze the degenerate bands together) """
-            E=self.Eig[ik]
+            E=self.eig.data[ik]
             ind=np.where( ( E<=froz_max)*(E>=froz_min) )[0]
             while len(ind)>0 and ind[0]>0 and E[ind[0]]-E[ind[0]-1]<thresh:
                 del(ind[0])  
@@ -111,19 +108,13 @@ class AbInitioData():
         self.Dmn.set_free(frozen_irr)
         self.nBfree=np.array([ np.sum(free) for free in self.free ])
         self.nWfree=np.array([ self.NW-np.sum(frozen) for frozen in self.frozen])
-#        print ("Bfree:",self.nBfree)
-#        print ("Wfree:",self.nWfree)
-        # initial guess : eq 27 of SMV2001
         irr=self.Dmn.kptirr
-#        print ('irr  = ',repr(irr),type(irr))
-#        print ('free = ',repr(self.free))
         U_opt_free_irr=self.get_max_eig(  [ self.Amn[ik][free,:].dot(self.Amn[ik][free,:].T.conj()) 
                         for ik,free in zip(irr,self.free[irr])]  ,self.nWfree[irr],self.nBfree[irr]) # nBfee x nWfree marrices
         # initial guess : eq 27 of SMV2001
         U_opt_free=self.symmetrize_U_opt(U_opt_free_irr,free=True)
 
-
-        Mmn_FF=self.Mmn_Free_Frozen(self.Mmn,self.free,self.frozen,self.neighbours,self.wb,self.NW)
+        Mmn_FF=self.Mmn_Free_Frozen(self.Mmn,self.free,self.frozen,self.mmn.neighbours,self.mmn.wk,self.NW)
 
         def calc_Z(Mmn_loc,U=None):
         # TODO : symmetrize (if needed) 
@@ -132,11 +123,10 @@ class AbInitioData():
             else:
                mmnff=Mmn_FF('free','free')
                mmnff=[mmnff[ik] for ik in self.Dmn.kptirr]
-               Mmn_loc_opt=[[Mmn[ib].dot(U[ikb]) for ib,ikb in enumerate(neigh)] for Mmn,neigh in zip(mmnff,self.neighbours[irr])]
-            return [sum(wb*mmn.dot(mmn.T.conj()) for wb,mmn in zip(wbk,Mmn)) for wbk,Mmn in zip(self.wb,Mmn_loc_opt) ]
+               Mmn_loc_opt=[[Mmn[ib].dot(U[ikb]) for ib,ikb in enumerate(neigh)] for Mmn,neigh in zip(mmnff,self.mmn.neighbours[irr])]
+            return [sum(wb*mmn.dot(mmn.T.conj()) for wb,mmn in zip(wbk,Mmn)) for wbk,Mmn in zip(self.mmn.wk,Mmn_loc_opt) ]
 
         Z_frozen=calc_Z(Mmn_FF('free','frozen')) #  only for irreducible
-        
 
 #        print ( '+---------------------------------------------------------------------+<-- DIS\n'+
 #                '|  Iter     Omega_I(i-1)      Omega_I(i)      Delta (frac.)    Time   |<-- DIS\n'+
@@ -176,19 +166,24 @@ class AbInitioData():
            Z,D,V=np.linalg.svd(U.T.conj().dot(self.Amn[ik]))
            U_opt_full_irr.append(U.dot(Z.dot(V)))
         U_opt_full=self.symmetrize_U_opt(U_opt_full_irr,free=False)
+        self.chk.v_matrix=U_opt_full
+        self.disentangled=True
 
 
        # now rotating to the optimized space
-        self.Hmn=[]
+#        self.Hmn=[]
 #        print (self.Amn.shape)
-        for ik in range(self.NK):
-            U=U_opt_full[ik]
-            Ud=U.T.conj()
+#        for ik in range(self.NK):
+#            U=U_opt_full[ik]
+#            Ud=U.T.conj()
             # hamiltonian is not diagonal anymore
-            self.Hmn.append(Ud.dot(np.diag(self.Eig[ik])).dot(U))
-            self.Amn[ik]=Ud.dot(self.Amn[ik])
-            self.Mmn[ik]=[Ud.dot(M).dot(U_opt_full[ibk]) for M,ibk in zip (self.Mmn[ik],self.neighbours[ik])]
-        self.disentangled=True
+#            self.Hmn.append(Ud.dot(np.diag(self.Eig[ik])).dot(U))
+#            self.Amn[ik]=Ud.dot(self.Amn[ik])
+#            self.Mmn[ik]=[Ud.dot(M).dot(U_opt_full[ibk]) for M,ibk in zip (self.Mmn[ik],self.neighbours[ik])]
+
+    def check_disentangled(self,msg):
+        if not self.disentangled: 
+            raise RuntimeError(f"no disentanglement was performed on the abinitio data, cannot proceed with {msg}")
 
 
     def symmetrize_U_opt(self,U_opt_free_irr,free=False):
@@ -227,8 +222,8 @@ class AbInitioData():
             U=Uham[ik]
             Ud=U.T.conj()
             Amn.append(Ud.dot(self.Amn[ik]))
-            Mmn.append([Ud.dot(M).dot(Uham[ibk]) for M,ibk in zip (self.Mmn[ik],self.neighbours[ik])])
-        MMN(data=Mmn,G=self.G,bk_cart=self.bk_cart,wk=self.wb,neighbours=self.neighbours).write(seedname)
+            Mmn.append([Ud.dot(M).dot(Uham[ibk]) for M,ibk in zip (self.Mmn[ik],self.mmn.neighbours[ik])])
+        MMN(data=Mmn,G=self.G,bk_cart=self.mmn.bk_cart,wk=self.mmn.wk,neighbours=self.mmn.neighbours).write(seedname)
         AMN(data=Amn).write(seedname)
 
     def get_max_eig(self,matrix,nvec,nBfree):
@@ -244,9 +239,9 @@ class AbInitioData():
     def wannier_centres(self):
         WC=np.zeros( (self.NW,3) )
         for ik in range(self.NK):
-            for ib,iknb in enumerate(self.neighbours[ik]) :
+            for ib,iknb in enumerate(self.mmn.neighbours[ik]) :
                 AAW=self.Mmn[ik][ib].diagonal()
-                WC -= np.log(AAW).imag[:,None]*self.wb[ik,ib]*self.bk_cart[ik,ib,None,:]
+                WC -= np.log(AAW).imag[:,None]*self.mmn.wk[ik,ib]*self.mmn.bk_cart[ik,ib,None,:]
         return WC/self.NK
     
     def getSystem(self,**parameters):
@@ -258,7 +253,7 @@ class AbInitioData():
         """ a class to store and call the Mmn matrix between/inside the free and frozen subspaces, as well as to calculate the streads"""
         def __init__(self,Mmn,free,frozen,neighbours,wb,NW):
            self.NK=len(Mmn)
-           self.wb=wb
+           self.wk=wb
            self.neighbours=neighbours
            self.data={}
            self.spaces={'free':free,'frozen':frozen}
@@ -266,8 +261,8 @@ class AbInitioData():
                for s2,sp2 in self.spaces.items():
                    self.data[(s1,s2)]=[[Mmn[ik][ib][sp1[ik],:][:,sp2[ikb]] 
                              for ib,ikb in enumerate(neigh)] for ik,neigh in enumerate(self.neighbours)]
-           self.Omega_I_0=NW*self.wb[0].sum()
-           self.Omega_I_frozen=-sum( sum( wb*np.sum(abs(mmn[ib])**2) for ib,wb in enumerate(WB)) for WB,mmn in zip(self.wb,self('frozen','frozen')))/self.NK
+           self.Omega_I_0=NW*self.wk[0].sum()
+           self.Omega_I_frozen=-sum( sum( wb*np.sum(abs(mmn[ib])**2) for ib,wb in enumerate(WB)) for WB,mmn in zip(self.wk,self('frozen','frozen')))/self.NK
 
         def __call__(self,space1,space2):
             assert space1 in self.spaces
@@ -277,13 +272,13 @@ class AbInitioData():
         def Omega_I_free_free(self,U_opt_free):
             U=U_opt_free
             Mmn=self('free','free')
-            return -sum( self.wb[ik][ib]*np.sum(abs(   U[ik].T.conj().dot(Mmn[ib]).dot(U[ikb])  )**2) 
+            return -sum( self.wk[ik][ib]*np.sum(abs(   U[ik].T.conj().dot(Mmn[ib]).dot(U[ikb])  )**2) 
                         for ik,Mmn in enumerate(Mmn) for ib,ikb in enumerate(self.neighbours[ik])  )/self.NK
 
         def Omega_I_free_frozen(self,U_opt_free):
             U=U_opt_free
             Mmn=self('free','frozen')
-            return -sum( self.wb[ik][ib]*np.sum(abs(   U[ik].T.conj().dot(Mmn[ib])  )**2) 
+            return -sum( self.wk[ik][ib]*np.sum(abs(   U[ik].T.conj().dot(Mmn[ib])  )**2) 
                         for ik,Mmn in enumerate(Mmn) for ib,ikb in enumerate(self.neighbours[ik])  )/self.NK*2
 
 

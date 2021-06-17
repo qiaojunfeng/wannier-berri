@@ -1,4 +1,4 @@
-#                                                            #
+#                                                           #
 # This file is distributed as part of the WannierBerri code  #
 # under the terms of the GNU General Public License. See the #
 # file `LICENSE' in the root directory of the WannierBerri   #
@@ -28,7 +28,7 @@ readstr  = lambda F : "".join(c.decode('ascii')  for c in F.read_record('c') ).s
 
 class CheckPoint():
 
-    def __init__(self,seedname):
+    def __init__(self,seedname=None):
         t0=time()
         seedname=seedname.strip()
         FIN=FortranFileR(seedname+'.chk')
@@ -670,7 +670,7 @@ class DMN():
         self.D_wann_dag=np.ones((self.nkptirr,self.Nsym),dtype=complex)[:,:,None,None]*np.eye(self.num_wann)[None,None,:,:]
 
 
-    def apply_outer_window(self,win_index_irr):
+    def select_bands(self,win_index_irr):
         self.d_band=[ D[:,wi,:][:,:,wi] for D,wi in zip(self.d_band,win_index_irr) ]
 
     def set_free(self,frozen_irr):

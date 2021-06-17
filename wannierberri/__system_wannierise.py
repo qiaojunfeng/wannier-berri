@@ -56,8 +56,7 @@ class System_Wannierise(System_w90):
 
         self.set_parameters(**parameters)
         self.seedname=aidata.seedname
-        if not aidata.disentangled: 
-            warning ("no disentanglement was performed on the abinitio data. Are you sure you know what you are doing???")
+        aidata.check_disentangled()
 
         self.real_lattice,self.recip_lattice=real_recip_lattice(aidata.real_lattice,aidata.recip_lattice)
         self.mp_grid=aidata.mp_grid
@@ -74,10 +73,10 @@ class System_Wannierise(System_w90):
         if self.getAA or self.getBB:
             mmn=MMN(seedname,npar=npar)
 
-        kpt_mp_grid=[tuple(k) for k in np.array( np.round(chk.kpt_latt*np.array(chk.mp_grid)[None,:]),dtype=int)%chk.mp_grid]
+        kpt_mp_grid=[tuple(k) for k in np.array( np.round(aidata.kpt_latt*np.array(aidata.mp_grid)[None,:]),dtype=int)%aidata.mp_grid]
 #        print ("kpoints:",kpt_mp_grid)
         
-        fourier_q_to_R_loc=functools.partial(fourier_q_to_R, mp_grid=chk.mp_grid,kpt_mp_grid=kpt_mp_grid,iRvec=self.iRvec,ndegen=self.Ndegen,numthreads=npar,fft=fft)
+        fourier_q_to_R_loc=functools.partial(fourier_q_to_R, mp_grid=aidata.mp_grid,kpt_mp_grid=kpt_mp_grid,iRvec=self.iRvec,ndegen=self.Ndegen,numthreads=npar,fft=fft)
 
         timeFFT=0
         HHq=chk.get_HH_q(eig)
@@ -86,45 +85,45 @@ class System_Wannierise(System_w90):
         timeFFT+=time()-t0
 
         if self.getAA:
-            AAq=chk.get_AA_q(mmn,transl_inv=transl_inv)
+            AAq=aidata.get_AA_q(mmn,transl_inv=transl_inv)
             t0=time()
             self.AA_R=fourier_q_to_R_loc(AAq)
             timeFFT+=time()-t0
 
         if self.getBB:
             t0=time()
-            self.BB_R=fourier_q_to_R_loc(chk.get_AA_q(mmn,eig))
+            self.BB_R=fourier_q_to_R_loc(aidata.get_AA_q(mmn,eig))
             timeFFT+=time()-t0
 
         if self.getCC:
             uhu=UHU(seedname)
             t0=time()
-            self.CC_R=fourier_q_to_R_loc(chk.get_CC_q(uhu,mmn))
+            self.CC_R=fourier_q_to_R_loc(aidata.get_CC_q(uhu,mmn))
             timeFFT+=time()-t0
             del uhu
 
         if self.getSS:
             spn=SPN(seedname)
             t0=time()
-            self.SS_R=fourier_q_to_R_loc(chk.get_SS_q(spn))
+            self.SS_R=fourier_q_to_R_loc(aidata.get_SS_q(spn))
             if self.getSHC:
-                self.SR_R=fourier_q_to_R_loc(chk.get_SR_q(spn,mmn))
-                self.SH_R=fourier_q_to_R_loc(chk.get_SH_q(spn,eig))
-                self.SHR_R=fourier_q_to_R_loc(chk.get_SHR_q(spn,mmn,eig))
+                self.SR_R=fourier_q_to_R_loc(aidata.get_SR_q(spn,mmn))
+                self.SH_R=fourier_q_to_R_loc(aidata.get_SH_q(spn,eig))
+                self.SHR_R=fourier_q_to_R_loc(aidata.get_SHR_q(spn,mmn,eig))
             timeFFT+=time()-t0
             del spn
 
         if self.getSA:
             siu=SIU(seedname)
             t0=time()
-            self.SA_R=fourier_q_to_R_loc(chk.get_SA_q(siu,mmn))
+            self.SA_R=fourier_q_to_R_loc(aidata.get_SA_q(siu,mmn))
             timeFFT+=time()-t0
             del siu
 
         if self.getSHA:
             shu=SHU(seedname)
             t0=time()
-            self.SHA_R=fourier_q_to_R_loc(chk.get_SHA_q(shu,mmn))
+            self.SHA_R=fourier_q_to_R_loc(aidata.get_SHA_q(shu,mmn))
             timeFFT+=time()-t0
             del shu
 

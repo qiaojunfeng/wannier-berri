@@ -272,3 +272,24 @@ def system_Haldane_PythTB_sym(pythtb_Haldane):
     system.set_symmetry(["C3z"])
     return system
 
+@pytest.fixture(scope="session")
+def system_Fe_wberri_disentangle(create_files_Fe_W90):
+    """Create system for Fe using Wannier90 data"""
+
+    data_dir = create_files_Fe_W90
+    seedname = os.path.join(data_dir, "Fe")
+
+    # Load system
+
+    aidata=wberri.AbInitioData(seedname=seedname)
+#    aidata.apply_outer_window(win_min=-np.Inf,win_max= 70 )
+    aidata.disentangle( froz_min=np.Inf,
+                 froz_max=30,
+                 num_iter=100,
+                 conv_tol=1e-9,
+                 mix_ratio=0.5
+                 )
+    print (aidata.wannier_centres)
+    system=aidata.getSystem()
+    return system
+
