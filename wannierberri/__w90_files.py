@@ -88,6 +88,7 @@ class CheckPoint():
         mat=mat[self.win_min[ik1]:self.win_max[ik1],self.win_min[ik2]:self.win_max[ik2]]
         v1=self.v_matrix[ik1].conj()
         v2=self.v_matrix[ik2].T
+#        print (v1.shape,v2.shape,mat.shape)
         return  np.tensordot( np.tensordot(v1,mat,axes=(1,0)),v2,axes=(1,0)).transpose((0,-1,)+tuple(range(1,mat.ndim-1)))
 
     def get_HH_q(self,eig):
@@ -345,7 +346,7 @@ class MMN(W90_data):
                 check_eye=sum(w*m for w,m in zip(weight_shell,shell_mat))
                 tol=np.linalg.norm(check_eye-np.eye(3))
                 if tol>1e-5 :
-                    raise RuntimeError("Error while determining shell weights. the following matrix :\n {} \n failed to be identity by an error of {} Further debug informstion :  \n bk_latt_unique={} \n bk_cart_unique={} \n bk_cart_unique_length={}\nshell_mat={}\weight_shell={}\n".format(
+                    raise RuntimeError("Error while determining shell weights. the following matrix :\n {} \n failed to be identity by an error of {} Further debug informstion :  \n bk_latt_unique={} \n bk_cart_unique={} \n bk_cart_unique_length={}\nshell_mat={}\neight_shell={}\n".format(
                         check_eye,tol, bk_latt_unique,bk_cart_unique,bk_cart_unique_length,shell_mat,weight_shell))
                 weight=np.array([w for w,b1,b2 in zip(weight_shell,brd,brd[1:]) for i in range(b1,b2)])
                 weight_dict  = {tuple(bk):w for bk,w in zip(bk_latt_unique,weight) }

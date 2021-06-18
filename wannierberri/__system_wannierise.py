@@ -58,11 +58,14 @@ class System_Wannierise(System_w90):
         self.seedname=aidata.seedname
         aidata.check_disentangled()
 
-        self.real_lattice,self.recip_lattice=real_recip_lattice(aidata.real_lattice,aidata.recip_lattice)
-        self.mp_grid=aidata.mp_grid
+        self.real_lattice,self.recip_lattice=real_recip_lattice(aidata.chk.real_lattice,aidata.chk.recip_lattice)
+        self.mp_grid=aidata.chk.mp_grid
         self.iRvec,self.Ndegen=self.wigner_seitz()
         self.nRvec0=len(self.iRvec)
-        self.num_wann=aidata.NW
+        self.num_wann=aidata.chk.num_wann
+        self.wannier_centres_cart = aidata.wannier_centres
+        self.wannier_centres_reduced = self.wannier_centres_cart.dot(np.linalg.inv(self.real_lattice))
+
 
         if  self.use_ws:
             print ("using ws_distance")
@@ -71,15 +74,18 @@ class System_Wannierise(System_w90):
         
         eig=EIG(self.seedname)
         if self.getAA or self.getBB:
-            mmn=MMN(seedname,npar=npar)
-
-        kpt_mp_grid=[tuple(k) for k in np.array( np.round(aidata.kpt_latt*np.array(aidata.mp_grid)[None,:]),dtype=int)%aidata.mp_grid]
-#        print ("kpoints:",kpt_mp_grid)
+            mmn=aidata.mmn
         
-        fourier_q_to_R_loc=functools.partial(fourier_q_to_R, mp_grid=aidata.mp_grid,kpt_mp_grid=kpt_mp_grid,iRvec=self.iRvec,ndegen=self.Ndegen,numthreads=npar,fft=fft)
+        fourier_q_to_R_loc=functools.partial(fourier_q_to_R, 
+                                             mp_grid=aidata.chk.mp_grid,
+                                             kpt_mp_grid=aidata.kpt_mp_grid,
+                                             iRvec=self.iRvec,
+                                             ndegen=self.Ndegen,
+                                             numthreads=npar,
+                                             fft=fft)
 
         timeFFT=0
-        HHq=chk.get_HH_q(eig)
+        HHq=aidata.chk.get_HH_q(eig)
         t0=time()
         self.HH_R=fourier_q_to_R_loc( HHq )
         timeFFT+=time()-t0

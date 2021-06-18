@@ -23,7 +23,7 @@ class AbInitioData():
 # todo : create a model from this
 # todo : symmetry
 
-    def __init__(self,seedname="wannier90",sitesym=False):
+    def __init__(self,seedname="wannier90"):#,sitesym=False):
         self.seedname=copy(seedname)
         self.chk=CheckPoint_bare()
         win=WIN(self.seedname)
@@ -36,21 +36,26 @@ class AbInitioData():
         assert self.eig.NK==self.amn.NK==self.mmn.NK
         assert self.eig.NB>=self.amn.NB
         assert self.eig.NB>=self.mmn.NB
-        self.NK=self.eig.NK
-        self.NW=self.amn.NW
-        self.NB=self.mmn.NB
+        self.kpt_mp_grid=[tuple(k) for k in np.array( np.round(self.chk.kpt_latt*np.array(self.chk.mp_grid)[None,:]),dtype=int)%self.chk.mp_grid]
+        self.chk.num_kpts=self.eig.NK
+        self.chk.num_wann=self.amn.NW
+        self.chk.num_bands=self.mmn.NB
+        self.chk.win_min=np.array([0]*self.chk.num_kpts)
+        self.chk.win_max=np.array([self.chk.num_bands]*self.chk.num_kpts)
         self.chk.recip_lattice=2*np.pi*np.linalg.inv(self.chk.real_lattice).T
         self.mmn.set_bk(mp_grid=self.chk.mp_grid,kpt_latt=self.chk.kpt_latt,recip_lattice=self.chk.recip_lattice)
-        self.Mmn=self.mmn.data # [m for m in self.mmn.data]
-        self.Amn=self.amn.data # [a for a in self.amn.data]
-        self.Eig=self.eig.data # [e for e in self.eig.data]
-        self.win_index=[np.arange(self.eig.NB)]*self.NK
+        self.Mmn=[m for m in self.mmn.data]
+        self.Amn=[a for a in self.amn.data]
+        self.Eig=[e for e in self.eig.data]
+        self.win_index=[np.arange(self.eig.NB)]*self.chk.num_kpts
         self.disentangled=False
-        if sitesym:
-            self.Dmn=DMN(self.seedname,num_wann=self.NW)
-        else:
-            self.Dmn=DMN(None,num_wann=self.NW,num_bands=self.NB,nkpt=self.NK)
-
+#        if sitesym:
+#            self.Dmn=DMN(self.seedname,num_wann=self.chk.num_wann)
+#        else:
+#            self.Dmn=DMN(None,num_wann=self.chk.num_wann,num_bands=self.chk.num_bands,nkpt=self.chk.num_kpts)
+    @property 
+    def iter_kpts(self):
+        return range(self.chk.num_kpts)
 
 
     # TODO : allow k-dependent window (can it be useful?)
@@ -70,13 +75,14 @@ class AbInitioData():
                 ind=ind+[ind[-1]+1]
             return ind
 
-        win_index_irr=[win_index_nondegen(ik) for ik in self.Dmn.kptirr]
+#        win_index_irr=[win_index_nondegen(ik) for ik in self.Dmn.kptirr]
 #        self.excluded_bands=[list(set(ind)
-        self.Dmn.select_bands(win_index_irr)
-        win_index=[win_index_irr[ik] for ik in self.Dmn.kpt2kptirr]
+#        self.Dmn.select_bands(win_index_irr)
+#        win_index=[win_index_irr[ik] for ik in self.Dmn.kpt2kptirr]
+        win_index=[win_index_nondegen(ik) for ik in self.iter_kpts]
         self._Eig=[E[ind] for E, ind in zip(self._Eig,win_index)]
-        self._Mmn=[[self._Mmn[ik][ib][win_index[ik],:][:,win_index[ikb]] for ib,ikb in enumerate(self.mmn.neighbours[ik])] for ik in range(self.NK)]
-        self._Amn=[self._Amn[ik][win_index[ik],:] for ik in range(self.NK)]
+        self._Mmn=[[self._Mmn[ik][ib][win_index[ik],:][:,win_index[ikb]] for ib,ikb in enumerate(self.mmn.neighbours[ik])] for ik in self.iter_kpts]
+        self._Amn=[self._Amn[ik][win_index[ik],:] for ik in self.iter_kpts]
 
     # TODO : allow k-dependent window (can it be useful?)
     def disentangle(self,
@@ -88,6 +94,8 @@ class AbInitioData():
                  num_iter_converge=10,
                  ):
 
+        self.froz_min=froz_min
+        self.froz_max=froz_max
         assert 0<mix_ratio<=1
         def frozen_nondegen(ik,thresh=DEGEN_THRESH):
             """define the indices of the frozen bands, making sure that degenerate bands were not split 
@@ -102,28 +110,35 @@ class AbInitioData():
             froz[ind]=True
             return froz
 
-        frozen_irr=[frozen_nondegen(ik) for ik in self.Dmn.kptirr]
-        self.frozen=np.array([ frozen_irr[ik] for ik in self.Dmn.kpt2kptirr ])
+#        frozen_irr=[frozen_nondegen(ik) for ik in self.Dmn.kptirr]
+#        self.frozen=np.array([ frozen_irr[ik] for ik in self.Dmn.kpt2kptirr ])
+        self.frozen=np.array([ frozen_nondegen(ik) for ik in self.iter_kpts ])
         self.free= np.array([ np.logical_not(frozen) for frozen in self.frozen])
-        self.Dmn.set_free(frozen_irr)
-        self.nBfree=np.array([ np.sum(free) for free in self.free ])
-        self.nWfree=np.array([ self.NW-np.sum(frozen) for frozen in self.frozen])
-        irr=self.Dmn.kptirr
-        U_opt_free_irr=self.get_max_eig(  [ self.Amn[ik][free,:].dot(self.Amn[ik][free,:].T.conj()) 
-                        for ik,free in zip(irr,self.free[irr])]  ,self.nWfree[irr],self.nBfree[irr]) # nBfee x nWfree marrices
-        # initial guess : eq 27 of SMV2001
-        U_opt_free=self.symmetrize_U_opt(U_opt_free_irr,free=True)
+#        self.Dmn.set_free(frozen_irr)
+        self.chk.num_bandsfree=np.array([ np.sum(free) for free in self.free ])
+        self.nWfree=np.array([ self.chk.num_wann-np.sum(frozen) for frozen in self.frozen])
+#        irr=self.Dmn.kptirr
 
-        Mmn_FF=self.Mmn_Free_Frozen(self.Mmn,self.free,self.frozen,self.mmn.neighbours,self.mmn.wk,self.NW)
+        # initial guess : eq 27 of SMV2001
+#        U_opt_free_irr=self.get_max_eig(  [ self.Amn[ik][free,:].dot(self.Amn[ik][free,:].T.conj()) 
+#                        for ik,free in zip(irr,self.free[irr])]  ,self.nWfree[irr],self.chk.num_bandsfree[irr]) # nBfee x nWfree marrices
+#        U_opt_free=self.symmetrize_U_opt(U_opt_free_irr,free=True)
+        U_opt_free = self.get_max_eig(  [ self.Amn[ik][free,:].dot(self.Amn[ik][free,:].T.conj()) 
+                        for ik,free in enumerate(self.free)]  ,self.nWfree,self.chk.num_bandsfree) # nBfee x nWfree marrices
+
+        Mmn_FF=self.Mmn_Free_Frozen(self.Mmn,self.free,self.frozen,self.mmn.neighbours,self.mmn.wk,self.chk.num_wann)
 
         def calc_Z(Mmn_loc,U=None):
         # TODO : symmetrize (if needed) 
             if U is None: 
-               Mmn_loc_opt=[Mmn_loc[ik] for ik in self.Dmn.kptirr]
+#               Mmn_loc_opt=[Mmn_loc[ik] for ik in self.Dmn.kptirr]
+               Mmn_loc_opt=[Mmn_loc[ik] for ik in self.iter_kpts]
             else:
                mmnff=Mmn_FF('free','free')
-               mmnff=[mmnff[ik] for ik in self.Dmn.kptirr]
-               Mmn_loc_opt=[[Mmn[ib].dot(U[ikb]) for ib,ikb in enumerate(neigh)] for Mmn,neigh in zip(mmnff,self.mmn.neighbours[irr])]
+#               mmnff=[mmnff[ik] for ik in self.Dmn.kptirr]
+               mmnff=[mmnff[ik] for ik in self.iter_kpts]
+#               Mmn_loc_opt=[[Mmn[ib].dot(U[ikb]) for ib,ikb in enumerate(neigh)] for Mmn,neigh in zip(mmnff,self.mmn.neighbours[irr])]
+               Mmn_loc_opt=[[Mmn[ib].dot(U[ikb]) for ib,ikb in enumerate(neigh)] for Mmn,neigh in zip(mmnff,self.mmn.neighbours)]
             return [sum(wb*mmn.dot(mmn.T.conj()) for wb,mmn in zip(wbk,Mmn)) for wbk,Mmn in zip(self.mmn.wk,Mmn_loc_opt) ]
 
         Z_frozen=calc_Z(Mmn_FF('free','frozen')) #  only for irreducible
@@ -137,12 +152,13 @@ class AbInitioData():
             Z=[(z+zfr)  for z,zfr in zip(calc_Z(Mmn_FF('free','free'),U_opt_free),Z_frozen) ]  # only for irreducible
             if i_iter>0 and mix_ratio<1:
                 Z=[ (mix_ratio*z + (1-mix_ratio)*zo) for z,zo in zip(Z,Z_old) ]  #  only for irreducible
-            U_opt_free_irr=self.get_max_eig(Z,self.nWfree[irr],self.nBfree[irr]) #  only for irreducible
-            U_opt_free=self.symmetrize_U_opt(U_opt_free_irr,free=True)
+#            U_opt_free_irr=self.get_max_eig(Z,self.nWfree[irr],self.chk.num_bandsfree[irr]) #  only for irreducible
+#            U_opt_free=self.symmetrize_U_opt(U_opt_free_irr,free=True)
+            U_opt_free=self.get_max_eig(Z,self.nWfree,self.chk.num_bandsfree) #  
             Omega_I=sum(Mmn_FF.Omega_I(U_opt_free))
             Omega_I_list.append(Omega_I)
             try:
-                _delta=Omega_I-Omega_I_list[-2] 
+                _delta="{:15.8e}".format(Omega_I-Omega_I_list[-2])
             except IndexError:
                 _delta= "--"
 #            print ("iteration {:4d}".format(i_iter)+" Omega_I= "+"  ".join("{:15.10f}".format(x) for x in Omega_I)+" tot =","{:15.10f}".format(sum(Omega_I)))
@@ -154,34 +170,36 @@ class AbInitioData():
 
         U_opt_full_irr=[]
 #        print (self.Dmn.kptirr
-        for ik in self.Dmn.kptirr:
+#        for ik in self.Dmn.kptirr:
+        for ik in self.iter_kpts:
            nband=self.Eig[ik].shape[0]
-           U=np.zeros((nband,self.NW),dtype=complex)
+           U=np.zeros((nband,self.chk.num_wann),dtype=complex)
            nfrozen=sum(self.frozen[ik])
            nfree=sum(self.free[ik])
            assert nfree+nfrozen==nband
-           assert nfrozen<=self.NW, "number of frozen bands {} at k-point {} is greater than number of wannier functions {}".format(nfrozen,ik+1,self.NW)
+           assert nfrozen<=self.chk.num_wann, "number of frozen bands {} at k-point {} is greater than number of wannier functions {}".format(nfrozen,ik+1,self.chk.num_wann)
            U[self.frozen[ik] , range( nfrozen) ] = 1.
            U[self.free[ik]   , nfrozen : ] = U_opt_free[ik]
            Z,D,V=np.linalg.svd(U.T.conj().dot(self.Amn[ik]))
            U_opt_full_irr.append(U.dot(Z.dot(V)))
-        U_opt_full=self.symmetrize_U_opt(U_opt_full_irr,free=False)
-        self.chk.v_matrix=U_opt_full
+#        U_opt_full=self.symmetrize_U_opt(U_opt_full_irr,free=False)
+        U_opt_full = U_opt_full_irr  # temporary, withour symmetries
+        self.chk.v_matrix=np.array(U_opt_full).transpose((0,2,1))
         self.disentangled=True
 
 
        # now rotating to the optimized space
-#        self.Hmn=[]
+        self.Hmn=[]
 #        print (self.Amn.shape)
-#        for ik in range(self.NK):
-#            U=U_opt_full[ik]
-#            Ud=U.T.conj()
+        for ik in self.iter_kpts:
+            U=U_opt_full[ik]
+            Ud=U.T.conj()
             # hamiltonian is not diagonal anymore
-#            self.Hmn.append(Ud.dot(np.diag(self.Eig[ik])).dot(U))
-#            self.Amn[ik]=Ud.dot(self.Amn[ik])
-#            self.Mmn[ik]=[Ud.dot(M).dot(U_opt_full[ibk]) for M,ibk in zip (self.Mmn[ik],self.neighbours[ik])]
+            self.Hmn.append(Ud.dot(np.diag(self.Eig[ik])).dot(U))
+            self.Amn[ik]=Ud.dot(self.Amn[ik])
+            self.Mmn[ik]=[Ud.dot(M).dot(U_opt_full[ibk]) for M,ibk in zip (self.Mmn[ik],self.mmn.neighbours[ik])]
 
-    def check_disentangled(self,msg):
+    def check_disentangled(self,msg=""):
         if not self.disentangled: 
             raise RuntimeError(f"no disentanglement was performed on the abinitio data, cannot proceed with {msg}")
 
@@ -218,7 +236,7 @@ class AbInitioData():
             Eig.append(E)
             Uham.append(U)
         EIG(data=Eig).write(seedname)
-        for ik in range(self.NK):
+        for ik in self.iter_kpts:
             U=Uham[ik]
             Ud=U.T.conj()
             Amn.append(Ud.dot(self.Amn[ik]))
@@ -237,12 +255,12 @@ class AbInitioData():
 
     @property
     def wannier_centres(self):
-        WC=np.zeros( (self.NW,3) )
-        for ik in range(self.NK):
+        WC=np.zeros( (self.chk.num_wann,3) )
+        for ik in self.iter_kpts:
             for ib,iknb in enumerate(self.mmn.neighbours[ik]) :
                 AAW=self.Mmn[ik][ib].diagonal()
                 WC -= np.log(AAW).imag[:,None]*self.mmn.wk[ik,ib]*self.mmn.bk_cart[ik,ib,None,:]
-        return WC/self.NK
+        return WC/self.chk.num_kpts
     
     def getSystem(self,**parameters):
         return System_Wannierise(self,**parameters)
