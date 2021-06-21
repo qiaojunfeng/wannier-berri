@@ -72,7 +72,7 @@ class System_Wannierise(System_w90):
             #ws_map=ws_dist_map_gen(np.copy(self.iRvec),np.copy(chk.wannier_centres), np.copy(chk.mp_grid),np.copy(self.real_lattice),npar=npar)
             ws_map=ws_dist_map_gen(self.iRvec,aidata.wannier_centres, self.mp_grid,self.real_lattice, npar=npar)
         
-        eig=EIG(self.seedname)
+        eig=aidata.eig
         if self.getAA or self.getBB:
             mmn=aidata.mmn
         
@@ -91,20 +91,20 @@ class System_Wannierise(System_w90):
         timeFFT+=time()-t0
 
         if self.getAA:
-            AAq=aidata.get_AA_q(mmn,transl_inv=transl_inv)
+            AAq=aidata.chk.get_AA_q(mmn,transl_inv=transl_inv)
             t0=time()
             self.AA_R=fourier_q_to_R_loc(AAq)
             timeFFT+=time()-t0
 
         if self.getBB:
             t0=time()
-            self.BB_R=fourier_q_to_R_loc(aidata.get_AA_q(mmn,eig))
+            self.BB_R=fourier_q_to_R_loc(aidata.chk.get_AA_q(mmn,eig))
             timeFFT+=time()-t0
 
         if self.getCC:
             uhu=UHU(seedname)
             t0=time()
-            self.CC_R=fourier_q_to_R_loc(aidata.get_CC_q(uhu,mmn))
+            self.CC_R=fourier_q_to_R_loc(aidata.chk.get_CC_q(uhu,mmn))
             timeFFT+=time()-t0
             del uhu
 

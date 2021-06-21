@@ -292,5 +292,5 @@ def aidata_Fe(create_files_Fe_W90):
 def system_Fe_wberri_disentangle(aidata_Fe):
     """Create system for Fe using Wannier90 data"""
 
-    return aidata_Fe.getSystem(use_ws=False)
+    return aidata_Fe.getSystem()
 

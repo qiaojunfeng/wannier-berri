@@ -189,15 +189,15 @@ class AbInitioData():
 
 
        # now rotating to the optimized space
-        self.Hmn=[]
+#        self.Hmn=[]
 #        print (self.Amn.shape)
-        for ik in self.iter_kpts:
-            U=U_opt_full[ik]
-            Ud=U.T.conj()
+#        for ik in self.iter_kpts:
+#            U=U_opt_full[ik]
+#            Ud=U.T.conj()
             # hamiltonian is not diagonal anymore
-            self.Hmn.append(Ud.dot(np.diag(self.Eig[ik])).dot(U))
-            self.Amn[ik]=Ud.dot(self.Amn[ik])
-            self.Mmn[ik]=[Ud.dot(M).dot(U_opt_full[ibk]) for M,ibk in zip (self.Mmn[ik],self.mmn.neighbours[ik])]
+#            self.Hmn.append(Ud.dot(np.diag(self.Eig[ik])).dot(U))
+#            self.Amn[ik]=Ud.dot(self.Amn[ik])
+#            self.Mmn[ik]=[Ud.dot(M).dot(U_opt_full[ibk]) for M,ibk in zip (self.Mmn[ik],self.mmn.neighbours[ik])]
 
     def check_disentangled(self,msg=""):
         if not self.disentangled: 
@@ -255,12 +255,7 @@ class AbInitioData():
 
     @property
     def wannier_centres(self):
-        WC=np.zeros( (self.chk.num_wann,3) )
-        for ik in self.iter_kpts:
-            for ib,iknb in enumerate(self.mmn.neighbours[ik]) :
-                AAW=self.Mmn[ik][ib].diagonal()
-                WC -= np.log(AAW).imag[:,None]*self.mmn.wk[ik,ib]*self.mmn.bk_cart[ik,ib,None,:]
-        return WC/self.chk.num_kpts
+        return self.chk.get_AA_q(self.mmn,transl_inv=True).diagonal(axis1=1,axis2=2).sum(axis=0).real.T/self.chk.num_kpts
     
     def getSystem(self,**parameters):
         return System_Wannierise(self,**parameters)

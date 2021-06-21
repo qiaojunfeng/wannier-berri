@@ -11,10 +11,16 @@ from wannierberri.__Data_K import Data_K
 from create_system import create_files_Fe_W90, system_Fe_wberri_disentangle, aidata_Fe
 
 
-def test_spread(system_Fe_wberri_disentangle):
+def test_total_spread(system_Fe_wberri_disentangle):
     """Compare slow FT and FFT."""
     system = system_Fe_wberri_disentangle
     return 1
+
+def test_wannier_centres(aidata_Fe):
+    """Compare slow FT and FFT."""
+    print ("Wannier centres:\n",aidata_Fe.wannier_centres)
+    return 1
+
 
 def test_energies(system_Fe_wberri_disentangle, aidata_Fe):
     """check if system reproduces the energies inside the frozen window"""
