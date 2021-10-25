@@ -128,9 +128,11 @@ class EnergyResult(Result):
     def set_smoother(self, smoothers):
         if smoothers is None:
             smoothers = (None,)*self.N_energies
-        if not isinstance (smoothers,(list,tuple)) :
+        elif not isinstance (smoothers,(list,tuple)) :
             smoothers=[smoothers]
-        assert len(smoothers)==self.N_energies
+        smoothers = smoothers[:self.N_energies]
+        if len(smoothers)<self.N_energies:
+            smoothers+=[None]*(self.N_energies-len(smoothers))
         self.smoothers = [(VoidSmoother() if s is None else s) for s in  smoothers]
 
     @Lazy
