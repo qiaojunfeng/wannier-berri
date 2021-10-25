@@ -10,15 +10,9 @@ num_proc=4
 
 import os
 
-if local_code:
-   if 'wannierberri' not in os.listdir() :
-       os.symlink("../wannierberri","wannierberri")
-else:
-   if 'wannierberri' in os.listdir() :
-       os.remove('wannierberri')
 
 if 'Fe_tb.dat' not in os.listdir():
-    os.system('tar -xvf ../data/Fe_tb.dat.tar.gz') 
+    os.system('tar -xvf ../data/Fe_tb.dat.tar.gz')
 
 
 import wannierberri as wberri
@@ -40,11 +34,11 @@ wberri.integrate(system,
             grid=grid,
             Efermi=Efermi, 
             smearEf=100,  # smearing in Kelvin
-            quantities=["ahc","dos^1","dos^2","cumdos"],
+            quantities=["ahc","ahc^tetra","dos^tetra","dos","cumdos"],
             parallel=parallel,
             adpt_num_iter=10,
             parameters = {'tetra':True},
-            specific_parameters = {'dos^2':{'tetra':False}},
+            specific_parameters = {'dos':{'tetra':False},'ahc':{'tetra':False}},
             fftlib='fftw', #default.  alternative  option - 'numpy'
             fout_name='Fe',
             restart=False,
