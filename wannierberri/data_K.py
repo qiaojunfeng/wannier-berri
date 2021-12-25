@@ -301,6 +301,7 @@ class Data_K(System):
                 if bandmax>0:
                     weights[(0,bandmax)]=-np.Inf
             res.append( weights )
+#            print (f"{ik} :  {weights.keys()}")
         return res
 
 ###################################################

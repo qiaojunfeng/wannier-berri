@@ -88,7 +88,8 @@ parameters_ocean = {
 'tetra'          : (False, "use tetrahedron method"),
 'correction_wcc': (False,"include corrections to make the results coincide with and without wcc_phase for orbital moment"),
 'degen_thresh':   (1e-4,"bands with energy difference smaller than this threshold will be considered as degenerate"),
-'degen_Kramers':   (False,"consider bands (2i) and (2i+1) as degenerate (counting from zero)")
+'degen_Kramers':   (False,"consider bands (2i) and (2i+1) as degenerate (counting from zero)"),
+'fsea_covariant': (True,"when possible, treat the occupied bands (for fermisea integrals only) as a whole, i.e. evaluate the trace of covariant matrix for them")
 }
 
 for key,val in parameters_ocean.items(): 

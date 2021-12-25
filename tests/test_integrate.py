@@ -173,6 +173,14 @@ def test_Fe(check_integrate,system_Fe_W90, compare_energyresult,quantities_Fe,Ef
             extra_precision = {"Morb":-1e-6})
 
 
+def test_Fe_noncov(check_integrate,system_Fe_W90, compare_energyresult,quantities_Fe,Efermi_Fe):
+    """Test anomalous Hall conductivity , ohmic conductivity, dos, cumdos"""
+    check_integrate(system_Fe_W90 , quantities_Fe , fout_name="berry_Fe_W90" , suffix="noncov" , Efermi=Efermi_Fe , comparer=compare_energyresult,compare_smooth = True ,
+               parameters_K = {'_FF_antisym':True,'_CCab_antisym':True } ,
+               additional_parameters = {'fsea_covariant':False},
+            extra_precision = {"Morb":-1e-6})
+
+
 def test_Fe_user(check_integrate,system_Fe_W90, compare_energyresult,quantities_Fe,Efermi_Fe):
     """Test anomalous Hall conductivity , ohmic conductivity, dos, cumdos"""
 
