@@ -202,7 +202,7 @@ class TetraWeights():
         return [{ib:self.__weight_1b(op+ik,ib,der)  for ib in ibrg } for ik,ibrg in enumerate(bands_in_range)]
 
 # this is for fermiocean
-    def weights_all_band_groups(self,eFermi,der,op=0,ed=None,degen_thresh=-1,degen_Kramers=False):
+    def weights_all_band_groups(self,eFermi,der,op=0,ed=None,degen_thresh=-1,degen_Kramers=False,fsea_covariant=True):
         """
              here  the key of the return dict is a pair of integers (ib1,ib2)
         """
@@ -213,18 +213,28 @@ class TetraWeights():
             assert self.eFermi is eFermi
         res=[]
         for ik in range(op,ed):
-            bands_in_range=get_bands_in_range(self.eFermi[0],self.eFermi[-1],self.eCenter[ik],degen_thresh=degen_thresh,degen_Kramers=degen_Kramers,
+
+            if der==0 and not fsea_covariant:
+                E_band_min = -np.Inf
+                incl_sea = False
+#                print ("fermi sea is treated band-by-band")
+            else:
+                incl_sea = (der==0)
+                E_band_min = self.eFermi[0]
+
+            bands_in_range=get_bands_in_range(E_band_min,self.eFermi[-1],self.eCenter[ik],degen_thresh=degen_thresh,degen_Kramers=degen_Kramers,
                     Ebandmin=self.Emin[ik],Ebandmax=self.Emax[ik])
             weights= { (ib1,ib2):sum(self.__weight_1b(ik,ib,der) 
                                           for ib in range(ib1,ib2))/(ib2-ib1) 
                           for ib1,ib2 in bands_in_range  
                      }
 
-            if der==0 :
+            if incl_sea:
                 bandmax=get_bands_below_range(self.eFermi[0],self.eCenter[ik],Ebandmax=self.Emax[ik])
                 if len(bands_in_range)>0 :
                     bandmax=min(bandmax, bands_in_range[0][0])
                 weights[(0,bandmax)]=self.ones
+
 
             res.append( weights )
         return res

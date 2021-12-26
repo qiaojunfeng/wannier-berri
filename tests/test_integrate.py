@@ -172,12 +172,27 @@ def test_Fe(check_integrate,system_Fe_W90, compare_energyresult,quantities_Fe,Ef
                parameters_K = {'_FF_antisym':True,'_CCab_antisym':True } ,
             extra_precision = {"Morb":-1e-6})
 
+def test_Fe_tetra(check_integrate,system_Fe_W90, compare_energyresult,quantities_Fe,Efermi_Fe):
+    """Test anomalous Hall conductivity , ohmic conductivity, dos, cumdos"""
+    check_integrate(system_Fe_W90 , quantities_Fe , fout_name="berry_Fe_W90" , suffix="tetra" , suffix_ref = "tetra", Efermi=Efermi_Fe , comparer=compare_energyresult,compare_smooth = True ,
+               parameters_K = {'_FF_antisym':True,'_CCab_antisym':True } ,
+               additional_parameters  = {'tetra':True},
+            extra_precision = {"Morb":-1e-6})
+
+
 
 def test_Fe_noncov(check_integrate,system_Fe_W90, compare_energyresult,quantities_Fe,Efermi_Fe):
     """Test anomalous Hall conductivity , ohmic conductivity, dos, cumdos"""
     check_integrate(system_Fe_W90 , quantities_Fe , fout_name="berry_Fe_W90" , suffix="noncov" , Efermi=Efermi_Fe , comparer=compare_energyresult,compare_smooth = True ,
                parameters_K = {'_FF_antisym':True,'_CCab_antisym':True } ,
                additional_parameters = {'fsea_covariant':False},
+            extra_precision = {"Morb":-1e-6})
+
+def test_Fe_tetra_noncov(check_integrate,system_Fe_W90, compare_energyresult,quantities_Fe,Efermi_Fe):
+    """Test anomalous Hall conductivity , ohmic conductivity, dos, cumdos"""
+    check_integrate(system_Fe_W90 , quantities_Fe , fout_name="berry_Fe_W90" ,  suffix="tetra_noncov" , suffix_ref = "tetra" , Efermi=Efermi_Fe , comparer=compare_energyresult,compare_smooth = True ,
+               parameters_K = {'_FF_antisym':True,'_CCab_antisym':True } ,
+               additional_parameters  = {'tetra':True, 'fsea_covariant':False},
             extra_precision = {"Morb":-1e-6})
 
 
