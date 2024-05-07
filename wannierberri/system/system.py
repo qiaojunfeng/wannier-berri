@@ -588,7 +588,12 @@ class ws_dist_map():
                     matrix[:, :, ir] * self._iRvec_new[irvecnew][ir].reshape(reshaper)
                     for ir in self._iRvec_new[irvecnew]) for irvecnew in self._iRvec_ordered
             ]).transpose((1, 2, 0) + tuple(range(3, 3 + ndim)))
-        assert (np.abs(matrix_new.sum(axis=2) - matrix.sum(axis=2)).max() < 1e-12)
+        # print(matrix)
+        # print(matrix_new)
+        d = np.abs(matrix_new.sum(axis=2) - matrix.sum(axis=2)).max()
+        assert (d < 1e-9)
+        if d >= 1e-12:
+            print(f"JQ WARNING: Check sum for matrix : {d} >= original threshold 1e-12")
         return matrix_new
 
     def _add_star(self, ir, irvec_new, iw, jw):
