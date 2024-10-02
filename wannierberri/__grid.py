@@ -144,6 +144,13 @@ def iterate_vector(v1, v2):
 
 def autoNK(NK, NKFFTrec, symgroup):
     # frist determine all symmetric sets between NKFFTmin and 2*NKFFTmin
+
+    # without this, the following `NKFFTrec * 3` is wrong
+    # in principle, NKFFTrec is system.NKFFT_recommended which is system.mp_grid which
+    # should have been already converted to np.array, but I don't know why, some
+    # times it is just a list, leading to error. Another solution is to pass explicitly
+    # a np.array for mp_grid when initializing system.
+    NKFFTrec = np.array(NKFFTrec)
     FFT_symmetric = np.array([fft for fft in iterate_vector(NKFFTrec, NKFFTrec * 3) if symgroup.symmetric_grid(fft)])
     NKFFTmin = FFT_symmetric[np.argmin(FFT_symmetric.prod(axis=1))]
     print("Minimal symmetric FFT grid : ", NKFFTmin)
