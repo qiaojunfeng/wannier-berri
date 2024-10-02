@@ -174,7 +174,7 @@ def determineNK(periodic, NKdiv, NKFFT, NK, NKFFT_recommended, symgroup, length=
 
     if length is not None:
         if NK is None:
-            NK = np.array(np.round(length / (2 * np.pi) * np.linalg.norm(symgroup.recip_lattice, axis=1)), dtype=int)
+            NK = np.array(np.round(np.array(length) / (2 * np.pi) * np.linalg.norm(symgroup.recip_lattice, axis=1)), dtype=int)
             print("length={} was converted into NK={}".format(length, NK))
         else:
             print("WARNING : length is disregarded in presence of NK")
@@ -182,7 +182,7 @@ def determineNK(periodic, NKdiv, NKFFT, NK, NKFFT_recommended, symgroup, length=
     if length_FFT is not None:
         if NKFFT is None:
             NKFFT = np.array(
-                np.round(length_FFT / (2 * np.pi) * np.linalg.norm(symgroup.recip_lattice, axis=1)), dtype=int)
+                np.round(np.array(length_FFT) / (2 * np.pi) * np.linalg.norm(symgroup.recip_lattice, axis=1)), dtype=int)
             print("length_FFT={} was converted into NKFFT={}".format(length_FFT, NKFFT))
         else:
             print("WARNING : length_FFT is disregarded in presence of NKFFT")
